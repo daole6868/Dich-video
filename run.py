@@ -129,7 +129,10 @@ def main() -> int:
     setup_logging()
     keep_console_responsive()
     app = create_app(allow_lan=args.lan or host not in ("127.0.0.1", "localhost"))
-    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False))
+    # timeout_keep_alive: lúc nạp mô hình nhận dạng, máy chủ có thể không trả lời được trong vài giây;
+    # giữ kết nối của trình duyệt lâu hơn mặc định (5 giây) để nó không bị đóng oan.
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False,
+                                           timeout_keep_alive=60))
     app.state.server = server
     url = f"http://127.0.0.1:{port}"
     print("=" * 62)

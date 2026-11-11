@@ -328,8 +328,9 @@ def mix(background: str | os.PathLike | None, dub_wav: str | os.PathLike, out_wa
                     bg = bg.reshape(-1, 2)
                     if len(bg) < n:
                         bg = np.pad(bg, ((0, n - len(bg)), (0, 0)))
-                    times = (pos + np.arange(n, dtype=np.float32)) / SR
-                    gain = np.interp(times, np.arange(len(env), dtype=np.float32) * 0.01, env)
+                    # float64: với video dài, vị trí mẫu vượt quá độ chính xác của float32.
+                    times = (pos + np.arange(n, dtype=np.float64)) / SR
+                    gain = np.interp(times, np.arange(len(env), dtype=np.float64) * 0.01, env).astype(np.float32)
                     frame += bg * gain[:, None]
                 out.writeframes((_soft_limit(frame) * 32767.0).astype(np.int16).tobytes())
                 pos += n

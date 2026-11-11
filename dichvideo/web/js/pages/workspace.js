@@ -109,11 +109,15 @@ export const WorkspacePage = {
         const proj = await api.get(`/api/projects/${this.projectId}`);
         const changed = STEPS.some((s) => before.steps[s].status !== proj.steps[s].status) || before.busy !== proj.busy;
         const settingsClean = same(this.st, before.settings);
-        this.proj = proj;
         if (changed) {
-          // Một bước vừa xong: nạp lại câu phụ đề và cài đặt (máy chủ có thể đã tự thêm vùng che).
+          // Một bước vừa xong: nạp lại câu phụ đề trước rồi mới ghi nhận trạng thái mới. Nếu lần nạp này
+          // lỗi (máy chủ đang bận nạp mô hình…) thì trạng thái cũ còn nguyên và lần hỏi sau sẽ thử lại.
           const segs = await api.get(`/api/projects/${this.projectId}/segments`);
           this.segs = segs.segments;
+        }
+        this.proj = proj;
+        if (changed) {
+          // Máy chủ có thể đã tự thêm vùng che: lấy cài đặt mới nếu người dùng chưa sửa dở.
           if (settingsClean) this.st = clone(proj.settings);
           if (before.busy && !proj.busy) this.finished(proj);
         }

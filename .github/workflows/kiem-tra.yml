@@ -63,7 +63,7 @@ jobs:
           cmd /d /c "Chay_Windows.bat --check < NUL"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path -LiteralPath .\runtime\uv.exe)) { throw 'Tệp khởi động đã không tự tải uv' }
-          & .\.venv\Scripts\python.exe -c "import sys; print(sys.version); print(sys.executable)"
+          & .\.venv\Scripts\python.exe -c "import sys; print(sys.version)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Chạy lần hai (không cài lại)
@@ -158,7 +158,7 @@ jobs:
           test -x "${{ matrix.khoi_dong }}"
           "${{ matrix.khoi_dong }}" --check </dev/null
           test -x runtime/uv
-          .venv/bin/python -c "import sys; print(sys.version); print(sys.executable)"
+          .venv/bin/python -c "import sys; print(sys.version)"
 
       - name: Chạy lần hai (không cài lại)
         run: |

@@ -33,8 +33,15 @@ Giải nén tệp zip vào một thư mục bất kỳ rồi:
 | Hệ điều hành | Cách chạy |
 |---|---|
 | **Windows 10/11** | Bấm đúp **`Chay_Windows.bat`** |
-| **macOS** | Bấm đúp **`Chay_macOS.command`** (lần đầu: bấm chuột phải → *Open* để vượt qua cảnh báo của macOS) |
+| **macOS** | Bấm đúp **`Chay_macOS.command`**. Lần đầu macOS sẽ chặn vì tệp tải từ mạng — xem ghi chú ngay bên dưới |
 | **Linux** | Mở terminal trong thư mục và chạy `./chay_linux.sh` |
+
+**Ghi chú cho macOS.** Tệp tải từ mạng bị macOS chặn ở lần mở đầu tiên. Chọn một trong hai cách:
+
+- Mở *Terminal*, gõ `bash ` (có dấu cách), kéo thả tệp `chay_linux.sh` vào cửa sổ rồi nhấn Enter. Cách này
+  không bị chặn.
+- Hoặc bấm đúp `Chay_macOS.command`, đóng hộp cảnh báo, rồi vào *System Settings → Privacy & Security* bấm
+  **Open Anyway** (macOS 14 trở về trước: bấm chuột phải vào tệp → *Open*).
 
 Lần chạy đầu cần mạng. Tệp khởi động tự làm các việc sau, tất cả nằm gọn trong thư mục ứng dụng:
 

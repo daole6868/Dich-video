@@ -9,6 +9,8 @@ set "ROOT=%~dp0"
 set "UV=%ROOT%runtime\uv.exe"
 set "PY=%ROOT%.venv\Scripts\python.exe"
 set "DVS_ROOT=%ROOT%"
+rem Bo dem tai ve cua uv dat trong thu muc ung dung, cai xong se duoc xoa (khong de rac o thu muc nguoi dung).
+set "UV_CACHE_DIR=%ROOT%runtime\cache"
 
 if exist "%PY%" goto have_venv
 

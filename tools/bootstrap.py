@@ -44,7 +44,8 @@ def install(requirements: Path, uv: str | None) -> bool:
     if uv:
         cmd = [uv, "pip", "install", "--python", sys.executable, "-r", str(requirements)]
     else:
-        cmd = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements)]
+        cmd = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-cache-dir",
+               "-r", str(requirements)]
     print(f"  > Cài theo {requirements.name}…", flush=True)
     try:
         return subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
@@ -85,6 +86,8 @@ def main() -> int:
               "Nếu vẫn lỗi, xem mục 'Gỡ rối' trong README.md.")
         return 1
     MARKER.write_text(want, encoding="utf-8")
+    # Tệp khởi động đặt bộ đệm tải về của uv trong runtime/cache; cài xong thì không cần nữa.
+    shutil.rmtree(ROOT / "runtime" / "cache", ignore_errors=True)
     print("Đã cài xong thư viện.\n", flush=True)
     return 0
 

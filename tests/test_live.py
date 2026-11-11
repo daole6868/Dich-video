@@ -105,7 +105,8 @@ def test_google_free_translation_with_real_batches(monkeypatch):
     assert len(out) == len(lines) and all(v.strip() and v != z for z, v in zip(lines, out))
     assert not any(re.search(r"[\u4e00-\u9fff]", v) for v in out), "bản dịch còn sót chữ Hán"
     # Thứ tự câu phải được giữ nguyên qua việc gộp lô: kiểm vài từ khoá chắc chắn.
-    assert "trường" in out[2].lower() and "cà phê" in out[6].lower() and "cảm ơn" in out[11].lower()
+    assert "học" in out[2].lower() and "bắc kinh" in out[4].lower() and "cà phê" in out[6].lower()
+    assert "cảm ơn" in out[11].lower()
 
 
 def test_whole_pipeline_with_real_engines(base, http, wait_idle, speech, tmp_path):

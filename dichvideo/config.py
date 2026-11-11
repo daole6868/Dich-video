@@ -30,6 +30,12 @@ TMP_DIR = DATA_DIR / "tmp"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 GLOSSARY_FILE = DATA_DIR / "glossary.json"
 
+# Thư viện Hugging Face mặc định ghi bộ đệm vào thư mục người dùng (~/.cache/huggingface). Gom về thư mục
+# dữ liệu của ứng dụng để xoá thư mục ứng dụng là gỡ sạch; đồng thời không gửi số liệu sử dụng.
+os.environ.setdefault("HF_HOME", str(DATA_DIR / "cache" / "huggingface"))
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
 
 def ensure_dirs() -> None:
     for d in (DATA_DIR, PROJECTS_DIR, MODELS_DIR, USER_FONTS_DIR, LOG_DIR, TMP_DIR):

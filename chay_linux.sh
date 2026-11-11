@@ -6,6 +6,8 @@ cd "$(dirname "$0")" || exit 1
 ROOT="$(pwd)"
 PY="$ROOT/.venv/bin/python"
 UV="$ROOT/runtime/uv"
+# Bộ đệm tải về của uv đặt trong thư mục ứng dụng, cài xong sẽ được xoá (không để rác ở thư mục người dùng).
+export UV_CACHE_DIR="$ROOT/runtime/cache"
 
 say() { printf '%s\n' "$*"; }
 

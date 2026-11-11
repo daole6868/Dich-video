@@ -49,6 +49,8 @@ jobs:
           Expand-Archive -Path (Get-Item dist\DichVideoStudio-*.zip).FullName -DestinationPath $parent
           $app = Join-Path $parent 'DichVideoStudio'
           "APP_DIR=$app" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # Giả lập máy có tên người dùng có dấu: bản Python do uv tải về nằm trong một thư mục có dấu.
+          "UV_PYTHON_INSTALL_DIR=$(Join-Path $env:RUNNER_TEMP 'hồ sơ người dùng\uv-python')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Get-ChildItem -LiteralPath $app | Format-Table Name, Length
 
       - name: Chay_Windows.bat --check (cài đặt lần đầu như người dùng)
@@ -73,6 +75,19 @@ jobs:
           cmd /d /c "Chay_Windows.bat --check < NUL"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "Lần hai mất {0:n1} giây" -f ((Get-Date) - $t).TotalSeconds
+
+      - name: Đổi tên thư mục ứng dụng rồi chạy lại (không được cài lại từ đầu)
+        run: |
+          if (Test-Path -LiteralPath (Join-Path $env:APP_DIR 'runtime\cache')) { throw 'Bộ đệm tải về chưa được dọn sau khi cài' }
+          $new = Join-Path (Split-Path -LiteralPath $env:APP_DIR) 'Dịch Video (đã chuyển chỗ)'
+          Rename-Item -LiteralPath $env:APP_DIR -NewName (Split-Path -Leaf $new)
+          "APP_DIR=$new" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Set-Location -LiteralPath $new
+          $out = cmd /d /c "Chay_Windows.bat --check < NUL" 2>&1
+          $code = $LASTEXITCODE
+          $out
+          if ($code -ne 0) { exit $code }
+          if ("$out" -match 'cai dat lan dau') { throw 'Sau khi đổi tên thư mục, ứng dụng lại cài từ đầu' }
 
       - name: Khởi động máy chủ thật rồi gọi thử
         run: |
@@ -143,6 +158,8 @@ jobs:
           mkdir -p "$parent"
           unzip -q dist/DichVideoStudio-*.zip -d "$parent"
           echo "APP_DIR=$parent/DichVideoStudio" >> "$GITHUB_ENV"
+          # Giả lập máy có tên người dùng có dấu: bản Python do uv tải về nằm trong một thư mục có dấu.
+          echo "UV_PYTHON_INSTALL_DIR=$RUNNER_TEMP/hồ sơ người dùng/uv-python" >> "$GITHUB_ENV"
           ls -la "$parent/DichVideoStudio"
           uname -a
 
@@ -164,6 +181,17 @@ jobs:
         run: |
           cd "$APP_DIR"
           time "${{ matrix.khoi_dong }}" --check </dev/null
+
+      - name: Đổi tên thư mục ứng dụng rồi chạy lại (không được cài lại từ đầu)
+        run: |
+          if [ -e "$APP_DIR/runtime/cache" ]; then echo "Bộ đệm tải về chưa được dọn sau khi cài"; exit 1; fi
+          new="$(dirname "$APP_DIR")/Dịch Video (đã chuyển chỗ)"
+          mv "$APP_DIR" "$new"
+          echo "APP_DIR=$new" >> "$GITHUB_ENV"
+          cd "$new"
+          out="$("${{ matrix.khoi_dong }}" --check </dev/null 2>&1)" || { echo "$out"; exit 1; }
+          echo "$out"
+          if echo "$out" | grep -q "cài đặt lần đầu"; then echo "Sau khi đổi tên thư mục, ứng dụng lại cài từ đầu"; exit 1; fi
 
       - name: Khởi động máy chủ thật rồi gọi thử
         run: |

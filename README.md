@@ -53,8 +53,10 @@ Lần chạy đầu cần mạng. Tệp khởi động tự làm các việc sau
 Các lần sau khởi động trong vài giây. Giữ cửa sổ dòng lệnh mở trong lúc dùng; đóng nó (hoặc nhấn `Ctrl+C`) để thoát —
 việc đang xử lý dở sẽ dừng theo. Bấm đúp tệp khởi động khi ứng dụng đang chạy chỉ mở lại giao diện, không chạy bản thứ hai.
 
-Bạn có thể đổi tên hoặc chuyển thư mục ứng dụng đi chỗ khác bất cứ lúc nào; tên thư mục có dấu tiếng Việt, khoảng
-trắng hay dấu ngoặc đều dùng được. Dự án, mô hình và cài đặt nằm trong `data/` nên đi theo thư mục.
+Bạn có thể đổi tên hoặc chuyển thư mục ứng dụng đi chỗ khác (hãy đóng ứng dụng trước); tên thư mục có dấu tiếng
+Việt, khoảng trắng hay dấu ngoặc đều dùng được. Dự án, mô hình và cài đặt nằm trong `data/` nên đi theo thư mục.
+Trên Windows, nếu vừa cài xong mà hệ thống báo thư mục đang được dùng thì chờ vài giây rồi thử lại — lúc đó Windows
+còn đang quét các tệp mới cài.
 
 **Những thứ nằm ngoài thư mục ứng dụng** (chỉ có hai):
 
@@ -164,7 +166,8 @@ Ubuntu x64 — quy trình nằm trong `.github/workflows/kiem-tra.yml` của kho
 
 - Giải nén bản zip vào một thư mục tên có dấu tiếng Việt, khoảng trắng, dấu ngoặc và dấu `&`; chạy tệp khởi động:
   tự tải `uv`, tự tải Python 3.12 (đặt trong thư mục có dấu, như máy có tên người dùng có dấu), cài đúng bộ thư viện
-  đã khoá phiên bản, tự kiểm tra đạt. Chạy lại lần hai không cài lại. Đổi tên thư mục rồi chạy lại vẫn dùng được.
+  đã khoá phiên bản, tự kiểm tra đạt. Chạy lại lần hai không cài lại. Đổi tên thư mục rồi chạy lại vẫn dùng được
+  (trên Windows, có một lượt hệ điều hành từ chối đổi tên ngay sau khi cài vì thư mục còn bị giữ; chờ vài giây thì được).
 - Khởi động máy chủ, mở trang chủ, tắt bằng lệnh tắt.
 - Toàn bộ test tự động (`tests/`, hơn 100 test): phụ đề, tách câu, khớp thời lượng lồng tiếng, trộn âm thanh, dựng
   video thật (kể cả kích thước lẻ và điểm ảnh không vuông), logic OCR, kho dự án, cấu hình, các bộ dịch và giọng đọc

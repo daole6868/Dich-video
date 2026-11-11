@@ -85,7 +85,7 @@ jobs:
           $renamed = $false
           foreach ($i in 1..30) {
             try { Rename-Item -LiteralPath $env:APP_DIR -NewName (Split-Path -Leaf $new) -ErrorAction Stop; $renamed = $true; break }
-            catch { "Lần $i: thư mục đang bị giữ ($($_.Exception.Message))"; Start-Sleep -Seconds 1 }
+            catch { "Lần ${i}: thư mục đang bị giữ ($($_.Exception.Message))"; Start-Sleep -Seconds 1 }
           }
           if (-not $renamed) {
             Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*DichVideoStudio*' -or $_.Name -like 'ffmpeg*' -or $_.Name -like 'python*' -or $_.Name -like 'uv*' } |

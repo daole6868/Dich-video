@@ -186,8 +186,13 @@ tắt cả ứng dụng khi thư mục có dấu, và các lệnh in tiếng Vi�
   lồng tiếng 23 câu bằng giọng Edge, xuất video có phụ đề Việt đè lên vùng che. Rãnh tiếng lồng được Whisper nghe
   lại đủ 101/101 từ, độ khớp 90%. Bản dịch của lần chạy này được viết tay rồi nhập vào, vì hôm đó Google Dịch từ
   chối máy phát triển (lỗi 429).
-- Giao diện, bằng trình duyệt Chromium điều khiển tự động: tải video lên, chờ xử lý, sửa phụ đề, tách/hoàn tác, đổi
-  phông, vẽ/di chuyển/đổi cỡ vùng che, xuất lại, phát và tua video kết quả; không có lỗi trong console.
+- **Video dài**: ghép lặp video trên thành 12 phút 40 giây. Ra 138 câu, toàn bộ quy trình mất khoảng 11 phút. Bộ
+  nhớ của ứng dụng lên cao nhất khoảng 3 GB lúc nhận dạng giọng nói rồi trở về khoảng 350 MB; không tăng theo độ
+  dài video. Trình sửa phụ đề (mỗi trang 100 câu) và việc phát, tua video kết quả 150 MB đều chạy tốt.
+- Giao diện, bằng trình duyệt Chromium điều khiển tự động, trên một bản cài mới từ tệp zip: tải video lên, chờ xử
+  lý, sửa phụ đề, tách/hoàn tác, đổi phông, vẽ/di chuyển/đổi cỡ vùng che, xuất lại, phát và tua video kết quả; không
+  có lỗi trong console.
+- Tắt ứng dụng rồi mở lại ngay vẫn ở địa chỉ cũ; mở thêm lần nữa khi đang chạy thì chỉ báo địa chỉ của bản đang chạy.
 - Cả 14 giọng Edge và 2 giọng Piper đọc tiếng Việt, Whisper nhận dạng lại đúng 92–100%.
 
 **Chỉ kiểm thử bằng máy chủ giả lập** (đúng giao thức, chưa gọi dịch vụ thật vì không có khoá API):
@@ -202,7 +207,7 @@ bộ dịch Claude và các bộ dịch tương thích OpenAI, nhận dạng qua
 - Card NVIDIA và các bộ mã hoá phần cứng NVENC, Quick Sync, AMF. Ứng dụng thử bộ mã hoá trước khi dùng và tự
   chuyển về CPU nếu không chạy được.
 - Tải video từ các trang thật (YouTube, Bilibili, Douyin…).
-- Video dài (trên 10 phút) và nhiều video xếp hàng liên tiếp.
+- Video dài hơn 15 phút (ví dụ cả tập phim 45 phút) và nhiều video xếp hàng liên tiếp.
 
 Nếu gặp lỗi, hãy gửi nội dung thẻ *Nhật ký* của dự án và tệp `data/logs/app.log`.
 

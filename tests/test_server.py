@@ -42,7 +42,18 @@ def test_ping_and_second_launch_detection(base, http):
     with socket.socket() as s:  # cổng chưa ai dùng
         s.bind(("127.0.0.1", 0))
         free = s.getsockname()[1]
-    assert run.running_instance(free) is False
+    assert run.running_instance(free) is False and run.port_free("127.0.0.1", free) is True
+    # Bản đang chạy có thể nằm ở cổng kế tiếp (cổng đầu bị chương trình khác chiếm lúc nó khởi động):
+    # lần mở sau phải tìm ra nó thay vì chạy thêm một bản trên cổng trống.
+    assert run.pick_port("127.0.0.1", [free, port]) == ("running", port)
+    assert run.pick_port("127.0.0.1", [free]) == ("free", free)
+    with socket.socket() as other:  # cổng do một chương trình khác (không phải ứng dụng) đang dùng
+        other.bind(("127.0.0.1", 0))
+        other.listen(1)
+        taken = other.getsockname()[1]
+        assert run.port_free("127.0.0.1", taken) is False
+        assert run.pick_port("127.0.0.1", [taken, free]) == ("free", free)
+        assert run.pick_port("127.0.0.1", [taken]) == ("none", 0)
 
 
 def test_static_pages_and_fonts(base, http):

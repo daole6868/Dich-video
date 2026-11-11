@@ -73,11 +73,30 @@ def running_instance(port: int) -> bool:
 
 def port_free(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if os.name != "nt":
+            # Mở cổng theo đúng cách máy chủ sẽ mở: cổng vừa được một bản khác nhả ra thì dùng lại được
+            # ngay (tắt rồi mở lại ứng dụng vẫn ở địa chỉ cũ). Trên Windows không đặt tuỳ chọn này vì ở đó
+            # nó cho phép chiếm cả cổng đang có chương trình khác lắng nghe.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
             return True
         except OSError:
             return False
+
+
+def pick_port(host: str, candidates) -> tuple[str, int]:
+    """Chọn cổng để chạy. Trả ``("running", cổng)`` nếu ứng dụng đã chạy sẵn ở một trong các cổng,
+    ``("free", cổng)`` cho cổng trống đầu tiên, hoặc ``("none", 0)``."""
+    candidates = list(candidates)
+    busy = [p for p in candidates if not port_free(host, p)]
+    for p in busy:  # bản đang chạy có thể đã phải lùi sang cổng kế tiếp, nên dò hết các cổng đang bận
+        if running_instance(p):
+            return "running", p
+    for p in candidates:
+        if p not in busy and port_free(host, p):
+            return "free", p
+    return "none", 0
 
 
 def main() -> int:
@@ -109,8 +128,9 @@ def main() -> int:
         return selfcheck.run()
 
     host = "0.0.0.0" if args.lan else args.host
-    port = args.port
-    if not port_free(host, port) and running_instance(port):
+    # Cổng do chương trình khác dùng thì thử các cổng kế tiếp.
+    state, port = pick_port(host, range(args.port, args.port + 20))
+    if state == "running":
         # Bấm đúp tệp khởi động lần nữa: không mở bản thứ hai (hai bản cùng ghi một thư mục dữ liệu
         # sẽ giẫm chân nhau), chỉ mở lại giao diện của bản đang chạy.
         url = f"http://127.0.0.1:{port}"
@@ -118,11 +138,7 @@ def main() -> int:
         if not args.no_browser:
             webbrowser.open(url)
         return 0
-    for _ in range(20):  # cổng do chương trình khác dùng thì thử cổng kế tiếp
-        if port_free(host, port):
-            break
-        port += 1
-    else:
+    if state != "free":
         print(f"Không tìm được cổng trống quanh {args.port}.")
         return 1
 

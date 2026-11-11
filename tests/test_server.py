@@ -1,11 +1,14 @@
 """Test API bằng một máy chủ thật chạy trong tiến trình test (không cần mạng, không cần mô hình)."""
 
+import json
 import socket
 
 import pytest
 import requests
 
 from dichvideo import config, ffmpeg
+from dichvideo.translate import openai_compat
+from mock_servers import MockServer, chat_reply
 
 
 @pytest.fixture(scope="module")
@@ -151,6 +154,44 @@ def test_project_flow_without_network(base, http, video, wait_idle):
 
     assert http.delete(f"{base}/api/projects/{pid}").json() == {"ok": True}
     assert http.get(f"{base}/api/projects/{pid}").status_code == 404
+
+
+def test_continue_keeps_typed_translations_but_retranslate_all_overwrites(base, http, video, wait_idle):
+    """"Chạy tiếp" không được ghi đè câu người dùng đã tự dịch; "Dịch lại toàn bộ" thì dịch lại hết."""
+    def translator(req):
+        user = req["json"]["messages"][-1]["content"]
+        rows = json.loads(next(ln for ln in user.splitlines() if ln.startswith("[{")))
+        return 200, {}, chat_reply(json.dumps({"translations": [{"id": r["id"], "vi": f"Máy dịch {r['id']}"} for r in rows]},
+                                              ensure_ascii=False))
+
+    def asked(srv):  # id các câu được gửi đi dịch trong yêu cầu gần nhất
+        user = srv.requests[-1]["json"]["messages"][-1]["content"]
+        return [r["id"] for r in json.loads(next(ln for ln in user.splitlines() if ln.startswith("[{")))]
+
+    proj = http.post(base + "/api/projects", json={"filename": video.name, "settings": {
+        "translate": {"engine": "custom"}, "dub": {"enabled": False}, "subtitle": {"burn": False}}}).json()
+    pid = proj["id"]
+    with open(video, "rb") as f:
+        assert http.put(f"{base}/api/projects/{pid}/source", data=f).status_code == 200
+    assert http.post(f"{base}/api/projects/{pid}/run", json={"steps": ["prepare"]}).status_code == 200
+    wait_idle(pid)
+    segs = http.post(f"{base}/api/projects/{pid}/subtitles/import?kind=source&filename=goc.srt", data=SRT_ZH.encode()).json()["segments"]
+    segs[0]["translation"] = "Câu tôi tự dịch"
+    assert http.put(f"{base}/api/projects/{pid}/segments", json={"segments": segs}).status_code == 200
+    with MockServer(translator) as llm:
+        config.save_settings({"llm": {"custom": {"base_url": llm.url + "/v1", "api_key": "sk-test-0000", "model": "m"}}})
+        openai_compat._variant_for.clear()
+        assert http.post(f"{base}/api/projects/{pid}/run", json={}).status_code == 200  # chạy tiếp
+        done = wait_idle(pid)
+        assert done["steps"]["translate"]["status"] == "done" and done["steps"]["render"]["status"] == "done", done["steps"]
+        assert done["steps"]["translate"]["info"]["kept"] == 1 and done["steps"]["translate"]["info"]["translated"] == 1
+        got = [s["translation"] for s in http.get(f"{base}/api/projects/{pid}/segments").json()["segments"]]
+        assert got == ["Câu tôi tự dịch", "Máy dịch 2"] and asked(llm) == [2]
+        assert http.post(f"{base}/api/projects/{pid}/run", json={"steps": ["translate"]}).status_code == 200  # dịch lại toàn bộ
+        wait_idle(pid)
+        got = [s["translation"] for s in http.get(f"{base}/api/projects/{pid}/segments").json()["segments"]]
+        assert got == ["Máy dịch 1", "Máy dịch 2"] and asked(llm) == [1, 2]
+    assert http.delete(f"{base}/api/projects/{pid}").json() == {"ok": True}
 
 
 def test_bad_ids_and_inputs(base, http):

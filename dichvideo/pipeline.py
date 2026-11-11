@@ -229,15 +229,25 @@ def step_transcribe(pid: str, progress: Progress, cancel: threading.Event) -> di
     return info
 
 
-def step_translate(pid: str, progress: Progress, cancel: threading.Event) -> dict:
+def step_translate(pid: str, progress: Progress, cancel: threading.Event, *, keep_existing: bool = False) -> dict:
+    """Dịch các câu phụ đề. ``keep_existing``: chỉ dịch những câu còn trống.
+
+    Khi người dùng bấm "chạy tiếp" (không chỉ đích danh bước Dịch), các câu đã có bản dịch được giữ
+    nguyên: đó có thể là câu họ tự gõ, hoặc phần đã dịch xong trước khi bộ dịch báo lỗi giữa chừng.
+    Muốn dịch lại tất cả thì dùng nút "Dịch lại toàn bộ".
+    """
     data = projects.load(pid)
     segs = projects.load_segments(pid)
     if not segs:
         raise StepError("Chưa có câu phụ đề nào để dịch. Hãy chạy bước Nhận dạng trước.")
+    kept = sum(1 for s in segs if (s.get("translation") or "").strip()) if keep_existing else 0
     try:
-        result = translate.translate_segments(segs, data["settings"], progress=progress, cancel=cancel)
+        result = translate.translate_segments(segs, data["settings"], progress=progress, cancel=cancel,
+                                              only_empty=keep_existing)
     finally:
         projects.save_segments(pid, segs)  # giữ lại phần đã dịch dù bị lỗi/huỷ giữa chừng
+    if kept:
+        result["kept"] = kept
     return result
 
 
@@ -378,7 +388,10 @@ def run_steps(pid: str, steps: list[str], cancel: threading.Event, *, auto: bool
             projects.set_step(pid, _step, progress=round(max(0.0, min(1.0, value)), 4), message=message)
 
         try:
-            info = STEP_FUNCS[step](pid, progress, cancel) or {}
+            if step == "translate":
+                info = step_translate(pid, progress, cancel, keep_existing=auto) or {}
+            else:
+                info = STEP_FUNCS[step](pid, progress, cancel) or {}
         except Cancelled:
             projects.set_step(pid, step, status="pending", progress=0.0, message="Đã huỷ", error="")
             projects.log(pid, f"■ Đã huỷ ở bước {projects.STEP_NAMES[step]}")

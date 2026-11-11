@@ -42,7 +42,7 @@ export const HelpPage = {
           <li><b>Google Dịch (miễn phí)</b> — không cần khoá, dùng ngay. Đây là cổng không chính thức nên có thể bị giới hạn khi dịch nhiều; khi đó ứng dụng sẽ chờ rồi báo lỗi rõ ràng, không cố vượt giới hạn. Bản dịch theo từng câu, không nắm ngữ cảnh.</li>
           <li><b>Bộ dịch AI</b> (Claude, GPT, Gemini, DeepSeek… hoặc Ollama chạy trên máy) — cần khoá API nhập ở trang Cài đặt. Hiểu ngữ cảnh, giữ xưng hô và tên riêng Hán-Việt nhất quán, nhận được mô tả video và bảng thuật ngữ.</li>
         </ul>
-        <p>Dùng trang <a href="#/glossary">Thuật ngữ</a> để chốt cách dịch tên nhân vật, địa danh. Trong trình sửa phụ đề có nút dịch lại từng câu và "Dịch câu trống".</p>
+        <p>Dùng trang <a href="#/glossary">Thuật ngữ</a> để chốt cách dịch tên nhân vật, địa danh. Trong trình sửa phụ đề có nút dịch lại từng câu và "Dịch câu trống". Nút "Chạy tiếp các bước còn lại" giữ nguyên những câu đã có bản dịch (kể cả câu bạn tự gõ) và chỉ dịch câu còn trống; muốn dịch lại tất cả thì bấm "Dịch lại toàn bộ" ở thẻ Nhận dạng & Dịch.</p>
 
         <h2>Lồng tiếng cho khớp</h2>
         <ul>

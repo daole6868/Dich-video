@@ -1,13 +1,14 @@
 """Test các mô-đun lõi: lồng tiếng, xuất video, logic OCR, cấu hình, dự án, phông chữ, giọng đọc."""
 
 import json
+import os
 import threading
 import wave
 
 import numpy as np
 import pytest
 
-from dichvideo import asr, config, dubbing, ffmpeg, fonts, ocr, pipeline, projects, render, tts
+from dichvideo import asr, config, dubbing, ffmpeg, fileops, fonts, ocr, pipeline, projects, render, tts
 from dichvideo.ffmpeg import Cancelled
 
 from mock_servers import MockServer
@@ -412,6 +413,53 @@ def test_project_store_lifecycle():
     projects.delete(pid)
     with pytest.raises(projects.ProjectError):
         projects.load(pid)
+
+
+def test_fileops_retry_when_a_file_is_briefly_locked(tmp_path, monkeypatch):
+    """Giả lập Windows: tệp đích đang bị chương trình khác giữ nên ghi đè / xoá bị từ chối."""
+    src, dst = tmp_path / "moi.tmp", tmp_path / "du lieu.json"
+    src.write_text("mới", encoding="utf-8")
+    dst.write_text("cũ", encoding="utf-8")
+    real_replace, calls = os.replace, []
+
+    def locked_twice(a, b):
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError(13, "tệp đang được dùng")
+        real_replace(a, b)
+
+    monkeypatch.setattr(fileops.os, "replace", locked_twice)
+    fileops.replace(src, dst, wait=2.0)
+    assert dst.read_text(encoding="utf-8") == "mới" and len(calls) == 3 and not src.exists()
+
+    def always_locked(*_):
+        raise PermissionError(13, "tệp đang được dùng")
+
+    monkeypatch.setattr(fileops.os, "replace", always_locked)
+    with pytest.raises(PermissionError):
+        fileops.replace(dst, tmp_path / "khac.json", wait=0.1)
+    with pytest.raises(PermissionError):  # ghi cài đặt: báo lỗi thật chứ không âm thầm bỏ qua, và dọn tệp tạm
+        config.write_json_atomic(tmp_path / "cai dat.json", {"a": 1})
+    assert [f.name for f in tmp_path.iterdir()] == ["du lieu.json"]
+    assert fileops.remove(tmp_path / "không có") is True
+    monkeypatch.setattr(fileops.os, "remove", always_locked)
+    assert fileops.remove(dst, wait=0.05) is False and dst.exists()
+
+
+def test_project_delete_with_locked_file_then_leftovers_are_cleaned(monkeypatch):
+    p = projects.create("Thử xoá", "phim.mp4")
+    d = projects.project_dir(p["id"])
+    (d / "source.mp4").write_bytes(b"video")
+    # Một tệp trong dự án còn bị giữ nên thư mục không xoá hết được ngay.
+    monkeypatch.setattr(fileops, "remove_tree", lambda path, wait=0.0: False)
+    projects.delete(p["id"])
+    assert d.is_dir() and not (d / "project.json").exists()
+    assert all(x["id"] != p["id"] for x in projects.list_all())
+    with pytest.raises(projects.ProjectError):
+        projects.load(p["id"])
+    monkeypatch.undo()
+    assert projects.remove_leftovers() == 1 and not d.exists()
+    assert projects.remove_leftovers() == 0
 
 
 def test_safe_name_keeps_unicode_and_strips_reserved():

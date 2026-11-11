@@ -10,8 +10,11 @@ import copy
 import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
+
+from . import fileops
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -275,15 +278,23 @@ def write_json_atomic(path: Path, data: Any) -> None:
     tmp = path.with_name(path.name + f".tmp{os.getpid()}_{threading.get_ident()}")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    try:
+        fileops.replace(tmp, path)
+    except OSError:
+        fileops.remove(tmp)
+        raise
 
 
 def read_json(path: Path, default: Any = None) -> Any:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return default
+    for attempt in range(4):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except PermissionError:  # Windows: tệp đang bị chương trình khác giữ trong chốc lát
+            time.sleep(0.05 * (attempt + 1))
+        except (OSError, ValueError):
+            return default
+    return default
 
 
 def load_settings() -> dict[str, Any]:

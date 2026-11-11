@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
-from .. import config
+from .. import config, fileops
 from ..ffmpeg import Cancelled
 from . import api_engines, edge, piper_engine
 from .edge import NothingToSay
@@ -81,7 +81,7 @@ def synthesize(text: str, out_path: str, *, engine: str = "edge", voice: str = "
             os.remove(tmp)
     if not os.path.isfile(tmp):
         return False
-    os.replace(tmp, out_path)
+    fileops.replace(tmp, out_path)
     return True
 
 

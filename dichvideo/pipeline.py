@@ -10,7 +10,7 @@ import traceback
 from pathlib import Path
 from typing import Callable
 
-from . import asr, config, dubbing, ffmpeg, projects, render, subtitles, translate, tts
+from . import asr, dubbing, ffmpeg, fileops, projects, render, subtitles, translate, tts
 from .ffmpeg import Cancelled
 
 log = logging.getLogger(__name__)
@@ -57,8 +57,8 @@ def step_prepare(pid: str, progress: Progress, cancel: threading.Event) -> dict:
     if media["has_video"] and needs_proxy(src, media):
         make_proxy(src, proxy, media, cancel=cancel,
                    progress=lambda x: progress(0.6 + 0.3 * x, "Đang tạo bản xem trước nhẹ cho trình duyệt…"))
-    elif proxy.exists():
-        proxy.unlink()
+    else:
+        fileops.remove(proxy)
     hardsub = {"found": False, "hits": 0, "samples": 0, "region": None}
     if media["has_video"]:
         progress(0.92, "Đang kiểm tra video có phụ đề cứng không…")
@@ -133,10 +133,9 @@ def make_proxy(src: Path, dest: Path, media: dict, *, progress: Callable[[float]
     args += ["-movflags", "+faststart", "-f", "mp4", str(tmp)]
     try:
         ffmpeg.run(args, duration=float(media.get("duration") or 0) or None, progress=progress, cancel=cancel)
-        tmp.replace(dest)
+        fileops.replace(tmp, dest, wait=10.0)
     finally:
-        if tmp.exists():
-            tmp.unlink()
+        fileops.remove(tmp)
 
 
 def step_transcribe(pid: str, progress: Progress, cancel: threading.Event) -> dict:
@@ -426,7 +425,6 @@ def clear_outputs(pid: str, steps: list[str]) -> None:
     p = _paths(pid)
     if "dub" in steps:
         for f in (p["dub"], p["mix"]):
-            if f.exists():
-                f.unlink()
+            fileops.remove(f)
     if "transcribe" in steps:
         shutil.rmtree(p["work"] / "ocr", ignore_errors=True)

@@ -15,13 +15,12 @@ import copy
 import datetime as dt
 import re
 import secrets
-import shutil
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import config, subtitles
+from . import config, fileops, subtitles
 
 STEPS = ["prepare", "transcribe", "translate", "dub", "render"]
 STEP_NAMES = {
@@ -140,7 +139,8 @@ def list_all() -> list[dict]:
     out = []
     for d in config.PROJECTS_DIR.iterdir():
         if d.is_dir() and ID_RE.match(d.name):
-            data = config.read_json(d / "project.json")
+            with _lock(d.name):  # không đọc trong lúc luồng xử lý đang ghi đè tệp (Windows không cho)
+                data = config.read_json(d / "project.json")
             if isinstance(data, dict) and data.get("id") == d.name:
                 out.append(summary(data))
     out.sort(key=lambda p: p["created_at"], reverse=True)
@@ -161,7 +161,21 @@ def delete(pid: str) -> None:
     with _lock(pid):
         if not d.is_dir():
             raise ProjectError("Không tìm thấy dự án.", 404)
-        shutil.rmtree(d, ignore_errors=True)
+        # Xoá project.json trước: dù còn tệp đang bị chương trình khác giữ (Windows) thì dự án vẫn
+        # biến mất khỏi danh sách; phần sót lại được dọn ở lần khởi động sau (xem remove_leftovers).
+        if not fileops.remove(d / "project.json", wait=2.0):
+            raise ProjectError("Chưa xoá được dự án vì tệp đang được dùng. Hãy thử lại sau vài giây.", 409)
+        fileops.remove_tree(d, wait=1.5)
+
+
+def remove_leftovers() -> int:
+    """Dọn thư mục dự án đã xoá nhưng còn sót tệp (lúc xoá có tệp đang bị giữ)."""
+    config.ensure_dirs()
+    n = 0
+    for d in config.PROJECTS_DIR.iterdir():
+        if d.is_dir() and ID_RE.match(d.name) and not (d / "project.json").exists():
+            n += int(fileops.remove_tree(d, wait=0.0))
+    return n
 
 
 def disk_usage(pid: str) -> int:

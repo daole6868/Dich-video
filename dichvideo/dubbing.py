@@ -20,7 +20,7 @@ from typing import Callable
 
 import numpy as np
 
-from . import ffmpeg, tts
+from . import ffmpeg, fileops, tts
 from .ffmpeg import Cancelled
 
 log = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ def prepare_clips(segments: list[dict], dub: dict, cache_dir: str | os.PathLike,
         pcm = normalize_level(trim_silence(shift_pitch(pcm, post_pitch)))
         tmp = pcm_path.with_suffix(".pcm.part")
         tmp.write_bytes(pcm.tobytes())
-        os.replace(tmp, pcm_path)
+        fileops.replace(tmp, pcm_path)
         return job["key"], len(pcm) / SR
 
     clips: dict[int, dict] = {}

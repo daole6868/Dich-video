@@ -46,6 +46,11 @@ def homepage(dist: metadata.Distribution) -> str:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):  # Windows: in được tiếng Việt có dấu
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     rows = []
     for name in locked_names():
         try:

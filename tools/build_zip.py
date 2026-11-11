@@ -44,6 +44,11 @@ def files() -> list[Path]:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):  # Windows: in được tiếng Việt có dấu
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     target = dist / f"{TOP}-{version()}.zip"

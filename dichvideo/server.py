@@ -7,9 +7,11 @@ import logging
 import mimetypes
 import os
 import platform
+import re
 import shutil
 import sys
 import threading
+from email.utils import formatdate
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -18,12 +20,12 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, Response
+from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import APP_NAME, __version__, asr, config, downloader, ffmpeg, fonts, jobs, pipeline, projects, render
-from . import subtitles, translate, tts
+from . import APP_NAME, __version__, asr, config, downloader, ffmpeg, fileops, fonts, jobs, pipeline, projects
+from . import render, subtitles, translate, tts
 from .projects import ProjectError
 from .translate import glossary
 
@@ -315,12 +317,11 @@ async def upload_source(request: Request):
                     size += len(chunk)
         if size == 0:
             raise ProjectError("Tệp tải lên bị rỗng.")
-        os.replace(tmp, dest)
+        fileops.replace(tmp, dest)
     except OSError as e:
         raise ProjectError(f"Không ghi được tệp (có thể hết dung lượng đĩa): {e}", 507) from e
     finally:
-        if tmp.exists():
-            tmp.unlink()
+        fileops.remove(tmp)
     projects.update(pid, lambda d: d["source"].update(ready=True, size=size))
     projects.log(pid, f"Đã nhận video nguồn: {data['source']['original_name']} ({size / 1e6:.1f} MB)")
     if request.query_params.get("start") == "1":
@@ -599,6 +600,64 @@ async def export_subtitles(request: Request):
 # Tệp phương tiện
 # --------------------------------------------------------------------------
 
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+STREAM_CHUNK = 256 * 1024
+
+
+def stream_file(request: Request, path: Path, media_type: str, headers: dict[str, str] | None = None) -> Response:
+    """Gửi tệp lớn (video, kết quả) có hỗ trợ tua (Range) mà không giữ tệp mở giữa các lần gửi.
+
+    ``FileResponse`` giữ tệp mở suốt lúc trình duyệt còn nhận dữ liệu - với thẻ <video> đang tạm dừng
+    thì có thể là rất lâu. Trên Windows, tệp đang mở không ghi đè hay xoá được, nên xuất lại video
+    hoặc xoá dự án trong lúc đó sẽ lỗi. Ở đây mỗi khối dữ liệu được đọc bằng một lần mở-đọc-đóng.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return err("Không tìm thấy tệp.", 404)
+    size = st.st_size
+    etag = f'"{st.st_mtime_ns:x}-{size:x}"'
+    out = {"Accept-Ranges": "bytes", "ETag": etag, "Last-Modified": formatdate(st.st_mtime, usegmt=True),
+           **(headers or {})}
+    start, end, status = 0, size - 1, 200
+    wanted = (request.headers.get("range") or "").strip()
+    if_range = request.headers.get("if-range")
+    if wanted and size > 0 and (not if_range or if_range == etag):
+        m = _RANGE_RE.match(wanted)  # nhiều khoảng một lúc (hiếm gặp): bỏ qua, gửi cả tệp
+        if m and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            else:
+                start = max(0, size - int(m.group(2)))
+            if start >= size or start > end:
+                return Response(status_code=416, headers={**out, "Content-Range": f"bytes */{size}"})
+            status = 206
+            out["Content-Range"] = f"bytes {start}-{end}/{size}"
+    out["Content-Length"] = str(end - start + 1)
+    if request.method == "HEAD":
+        return Response(status_code=status, headers=out, media_type=media_type)
+
+    def read_block(pos: int, n: int) -> bytes:
+        try:
+            with open(path, "rb") as f:
+                f.seek(pos)
+                return f.read(n)
+        except OSError:
+            return b""  # tệp vừa bị thay hoặc xoá: kết thúc luồng, trình duyệt sẽ tự tải lại
+
+    async def body():
+        pos = start
+        while pos <= end:
+            block = await run_in_threadpool(read_block, pos, min(STREAM_CHUNK, end - pos + 1))
+            if not block:
+                return
+            pos += len(block)
+            yield block
+
+    return StreamingResponse(body(), status_code=status, headers=out, media_type=media_type)
+
+
 @api
 async def get_video(request: Request):
     pid = pid_of(request)
@@ -608,7 +667,7 @@ async def get_video(request: Request):
     if not path.is_file():
         return err("Chưa có video.", 404)
     ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    return FileResponse(path, media_type=ctype)
+    return stream_file(request, path, ctype)
 
 
 @api
@@ -678,7 +737,7 @@ async def upload_logo(request: Request):
         return err("Tệp logo bị rỗng.")
     d = projects.project_dir(pid)
     for old in d.glob("logo.*"):
-        old.unlink()
+        fileops.remove(old)
     (d / f"logo{ext}").write_bytes(raw)
     projects.update(pid, lambda x: x["settings"]["logo"].update(file=f"logo{ext}", enabled=True))
     projects.mark_stale(pid, ["render"])
@@ -708,7 +767,7 @@ async def get_output_file(request: Request):
     headers = {"Cache-Control": "no-cache"}
     if not inline:
         headers.update(download_headers(name))
-    return FileResponse(path, media_type=ctype, headers=headers)
+    return stream_file(request, path, ctype, headers)
 
 
 @api
@@ -812,6 +871,7 @@ def create_app(*, allow_lan: bool = False) -> Starlette:
     app = Starlette(routes=routes, middleware=[Middleware(GuardMiddleware)])
     app.state.allow_lan = allow_lan
     app.state.server = None
+    projects.remove_leftovers()
     recovered = projects.recover_interrupted()
     if recovered:
         log.info("Đã đánh dấu %d dự án bị gián đoạn từ lần chạy trước.", recovered)

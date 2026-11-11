@@ -1,44 +1,9 @@
 """Test API bằng một máy chủ thật chạy trong tiến trình test (không cần mạng, không cần mô hình)."""
 
-import socket
-import threading
-import time
-
 import pytest
 import requests
-import uvicorn
 
 from dichvideo import ffmpeg
-from dichvideo.server import create_app
-
-
-@pytest.fixture(scope="module")
-def base():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    app = create_app()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
-    app.state.server = server
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    url = f"http://127.0.0.1:{port}"
-    for _ in range(100):
-        try:
-            requests.get(url + "/api/jobs", timeout=1)
-            break
-        except requests.RequestException:
-            time.sleep(0.1)
-    yield url
-    server.should_exit = True
-    thread.join(timeout=10)
-
-
-@pytest.fixture(scope="module")
-def http():
-    s = requests.Session()
-    s.trust_env = False
-    return s
 
 
 @pytest.fixture(scope="module")
@@ -47,16 +12,6 @@ def video(tmp_path_factory):
     ffmpeg.run(["-f", "lavfi", "-i", "testsrc2=s=640x360:r=25:d=4", "-f", "lavfi", "-i", "sine=f=330:d=4",
                 "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out)])
     return out
-
-
-def wait_idle(http, base, pid, timeout=180):
-    end = time.time() + timeout
-    while time.time() < end:
-        p = http.get(f"{base}/api/projects/{pid}").json()
-        if not p["busy"]:
-            return p
-        time.sleep(0.3)
-    raise AssertionError("dự án không chạy xong trong thời gian cho phép")
 
 
 SRT_ZH = "1\n00:00:00,300 --> 00:00:01,500\n你好\n\n2\n00:00:02,000 --> 00:00:03,500\n再见\n"
@@ -95,7 +50,7 @@ def test_system_settings_glossary(base, http):
     assert http.put(base + "/api/settings", data="{hỏng", headers={"Content-Type": "application/json"}).status_code == 400
 
 
-def test_project_flow_without_network(base, http, video):
+def test_project_flow_without_network(base, http, video, wait_idle):
     assert http.post(base + "/api/projects", json={"filename": "tai-lieu.pdf"}).status_code == 400
     proj = http.post(base + "/api/projects", json={"filename": video.name, "settings": {"dub": {"enabled": False}}}).json()
     pid = proj["id"]
@@ -108,13 +63,29 @@ def test_project_flow_without_network(base, http, video):
 
     # --- chuẩn bị: đọc thông tin, ảnh thu nhỏ, kiểm tra phụ đề cứng
     assert http.post(f"{base}/api/projects/{pid}/run", json={"steps": ["prepare"]}).status_code == 200
-    proj = wait_idle(http, base, pid)
+    proj = wait_idle(pid)
     assert proj["steps"]["prepare"]["status"] == "done", proj["steps"]["prepare"]
     assert (proj["media"]["width"], proj["media"]["height"]) == (640, 360) and proj["hardsub"]["found"] is False
     assert http.get(f"{base}/api/projects/{pid}/thumb").headers["content-type"] == "image/jpeg"
     assert http.get(f"{base}/api/projects/{pid}/frame?t=1.5").content[:2] == b"\xff\xd8"
-    part = http.get(f"{base}/api/projects/{pid}/video", headers={"Range": "bytes=100-199"})
-    assert part.status_code == 206 and len(part.content) == 100
+    # --- phát video: tua bằng Range (máy chủ tự gửi từng khối, không giữ tệp mở)
+    url = f"{base}/api/projects/{pid}/video"
+    whole = http.get(url)
+    size = len(whole.content)
+    assert whole.status_code == 200 and whole.headers["accept-ranges"] == "bytes" and size > 300_000
+    assert int(whole.headers["content-length"]) == size and whole.content == video.read_bytes()
+    part = http.get(url, headers={"Range": "bytes=100-199"})
+    assert part.status_code == 206 and part.content == whole.content[100:200]
+    assert part.headers["content-range"] == f"bytes 100-199/{size}" and part.headers["content-length"] == "100"
+    assert http.get(url, headers={"Range": "bytes=-50"}).content == whole.content[-50:]
+    rest = http.get(url, headers={"Range": f"bytes={size - 10}-{size + 999}"})
+    assert rest.status_code == 206 and rest.content == whole.content[-10:]
+    assert http.get(url, headers={"Range": f"bytes={size}-"}).status_code == 416
+    head = http.head(url, headers={"Range": "bytes=0-9"})
+    assert head.status_code == 206 and head.headers["content-length"] == "10" and not head.content
+    stale = http.get(url, headers={"Range": "bytes=0-9", "If-Range": '"phiên-bản-cũ"'.encode().decode("latin-1")})
+    assert stale.status_code == 200 and len(stale.content) == size
+    assert http.get(url, headers={"Range": "bytes=0-9", "If-Range": whole.headers["etag"]}).status_code == 206
 
     # --- nhập lời gốc rồi nhập bản dịch: thông tin nguồn lời thoại phải được giữ
     r = http.post(f"{base}/api/projects/{pid}/subtitles/import?kind=source&filename=goc.srt", data=SRT_ZH.encode())
@@ -146,7 +117,7 @@ def test_project_flow_without_network(base, http, video):
     assert prev.status_code == 200 and prev.content[:2] == b"\xff\xd8"
     assert http.post(f"{base}/api/projects/{pid}/run", json={"steps": ["render"]}).status_code == 200
     assert http.put(f"{base}/api/projects/{pid}/segments", json={"segments": segs}).status_code in (200, 409)  # đang chạy thì bị khoá
-    proj = wait_idle(http, base, pid)
+    proj = wait_idle(pid)
     assert proj["steps"]["render"]["status"] == "done", proj["steps"]["render"]
     assert proj["steps"]["dub"]["status"] == "pending" and proj["steps"]["render"]["info"]["dubbed"] is False
     assert set(proj["outputs"]) == {"video", "srt_vi", "srt_source", "srt_bilingual"} and proj["outputs"]["video"] == "Tập 1.vi.mp4"

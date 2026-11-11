@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import Callable
 
-from . import ffmpeg, fonts, subtitles
+from . import ffmpeg, fileops, fonts, subtitles
 from .ffmpeg import Cancelled, FFmpegError
 
 log = logging.getLogger(__name__)
@@ -333,13 +333,14 @@ def render(src: str | os.PathLike, out_path: str | os.PathLike, *, project_dir: 
             log.warning("Mã hoá bằng %s thất bại, chuyển sang CPU (libx264).", encoder)
             encoder = "libx264"
             ffmpeg.run(build(encoder), duration=duration, progress=report, cancel=cancel, cwd=str(work))
-        os.replace(tmp_out, out_path)
+        try:
+            fileops.replace(tmp_out, out_path, wait=15.0)
+        except PermissionError as e:
+            raise FFmpegError(
+                f"Đã dựng xong nhưng không ghi đè được tệp kết quả cũ “{Path(out_path).name}” vì tệp đang được "
+                "mở trong chương trình khác (trình phát video?). Hãy đóng chương trình đó rồi xuất lại.") from e
     finally:
-        if tmp_out.exists():
-            try:
-                tmp_out.unlink()
-            except OSError:
-                pass
+        fileops.remove(tmp_out)
     return {"width": width, "height": height, "encoder": encoder if will_encode else "copy",
             "burned": burn, "soft_subs": soft, "size": out_path.stat().st_size,
             "cover": ("subtitle" if timed else "always") if (settings.get("cover") or []) else "none"}

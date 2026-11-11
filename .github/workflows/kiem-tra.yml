@@ -80,7 +80,19 @@ jobs:
         run: |
           if (Test-Path -LiteralPath (Join-Path $env:APP_DIR 'runtime\cache')) { throw 'Bộ đệm tải về chưa được dọn sau khi cài' }
           $new = Join-Path (Split-Path -LiteralPath $env:APP_DIR) 'Dịch Video (đã chuyển chỗ)'
-          Rename-Item -LiteralPath $env:APP_DIR -NewName (Split-Path -Leaf $new)
+          # Ngay sau khi cài, trình diệt virus của Windows còn đang quét các tệp mới nên thư mục có thể bị giữ
+          # trong chốc lát (người dùng sẽ thấy hộp thoại "Folder in use" của Explorer): thử lại tối đa 30 giây.
+          $renamed = $false
+          foreach ($i in 1..30) {
+            try { Rename-Item -LiteralPath $env:APP_DIR -NewName (Split-Path -Leaf $new) -ErrorAction Stop; $renamed = $true; break }
+            catch { "Lần $i: thư mục đang bị giữ ($($_.Exception.Message))"; Start-Sleep -Seconds 1 }
+          }
+          if (-not $renamed) {
+            Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*DichVideoStudio*' -or $_.Name -like 'ffmpeg*' -or $_.Name -like 'python*' -or $_.Name -like 'uv*' } |
+              Select-Object ProcessId, ParentProcessId, Name, CommandLine | Format-List
+            throw 'Không đổi tên được thư mục ứng dụng sau 30 giây'
+          }
+          "Đổi tên thư mục thành công ở lần thử thứ $i"
           "APP_DIR=$new" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Set-Location -LiteralPath $new
           $out = cmd /d /c "Chay_Windows.bat --check < NUL" 2>&1

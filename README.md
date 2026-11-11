@@ -47,7 +47,7 @@ Lần chạy đầu cần mạng. Tệp khởi động tự làm các việc sau
 
 1. Tải công cụ cài đặt `uv` vào `runtime/` (nếu máy chưa có).
 2. Tạo môi trường Python 3.12 riêng trong `.venv/` — **không cần cài Python trước**, không đụng tới Python sẵn có.
-3. Cài thư viện (vài trăm MB, đã gồm cả ffmpeg).
+3. Cài thư viện (tải vài trăm MB, chiếm khoảng 1 GB trên đĩa; đã gồm cả ffmpeg).
 4. Mở giao diện tại `http://127.0.0.1:8760`.
 
 Các lần sau khởi động trong vài giây. Giữ cửa sổ dòng lệnh mở trong lúc dùng; đóng nó (hoặc nhấn `Ctrl+C`) để thoát —

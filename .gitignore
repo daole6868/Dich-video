@@ -1,0 +1,12 @@
+# Môi trường & dữ liệu chạy
+.venv/
+runtime/
+data/
+dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.DS_Store
+Thumbs.db
+*.log

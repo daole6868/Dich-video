@@ -1,0 +1,32 @@
+# Thư viện của Dịch Video Studio.
+# Tệp khởi động sẽ ưu tiên cài theo requirements.lock.txt (đúng các phiên bản đã kiểm thử);
+# nếu máy bạn không có bản dựng sẵn cho phiên bản đó thì mới cài theo các khoảng dưới đây.
+# Nên dùng Python 3.12.
+
+# Nhận dạng giọng nói (Whisper)
+faster-whisper==1.2.1
+ctranslate2>=4.5,<5
+onnxruntime>=1.17,<2
+huggingface-hub>=0.25,<3
+numpy>=1.26,<3
+
+# Đọc phụ đề cứng (OCR) - bản này kèm sẵn mô hình, không cần tải thêm
+rapidocr==3.10.0
+opencv-python-headless>=4.8
+Pillow>=10
+
+# Giọng đọc
+edge-tts>=7.2,<8
+piper-tts>=1.3,<2
+
+# Dịch bằng Claude (SDK chính thức của Anthropic) và các dịch vụ HTTP khác
+anthropic>=2.8,<3
+requests>=2.31,<3
+
+# Xử lý video (kèm sẵn ffmpeg) và tải video từ liên kết
+imageio-ffmpeg>=0.6
+yt-dlp>=2026.10.26
+
+# Máy chủ giao diện
+starlette==1.10.0
+uvicorn==0.54.0

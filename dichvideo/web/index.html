@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dịch Video Studio</title>
+  <link rel="icon" href="/static/img/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script>
+    // Áp giao diện sáng/tối trước khi vẽ trang để không bị nháy.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("dvs-theme"); } catch (e) {}
+      if (t !== "light" && t !== "dark") {
+        t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <div id="app" v-cloak></div>
+  <noscript>Cần bật JavaScript để dùng Dịch Video Studio.</noscript>
+  <script src="/static/vendor/vue.global.prod.js"></script>
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

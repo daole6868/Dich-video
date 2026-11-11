@@ -556,6 +556,22 @@ def test_piper_never_lets_espeak_kill_the_app(tmp_path, monkeypatch):
     assert os.path.isfile(os.path.join(safe, "phontab")) and (os.name != "nt" or safe.isascii())
 
 
+@pytest.mark.skipif(os.name == "nt", reason="trên Windows không chuyển hướng được thư mục người dùng bằng HOME")
+def test_libraries_do_not_phone_home_or_litter_the_home_folder(tmp_path):
+    """ONNX Runtime mặc định tạo mã định danh máy và hàng đợi số liệu trong thư mục người dùng để gửi đi."""
+    assert os.environ["ORT_DISABLE_TELEMETRY"] == "1" and os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
+    home = tmp_path / "nhà"
+    home.mkdir()
+    code = ("import sys; sys.path.insert(0, sys.argv[1]); import numpy as np; from dichvideo import ocr; "
+            "ocr.read_frame_texts(ocr._make_engine(), np.zeros((64, 256, 3), np.uint8), False)")
+    env = {k: v for k, v in os.environ.items() if k not in ("ORT_DISABLE_TELEMETRY", "HF_HUB_DISABLE_TELEMETRY")}
+    env["HOME"] = str(home)
+    done = subprocess.run([sys.executable, "-c", code, str(config.ROOT)], env=env, capture_output=True, timeout=120)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")[-800:]
+    left = [str(p.relative_to(home)) for p in home.rglob("*") if p.is_file()]
+    assert not [p for p in left if "onnxruntime" in p.lower() or "developertools" in p.lower()], left
+
+
 def test_safe_name_keeps_unicode_and_strips_reserved():
     assert projects.safe_name('Tập 1: "鲤鱼" <thử>|.') == "Tập 1 鲤鱼 thử"
     assert projects.safe_name("con") == "_con" and projects.safe_name("NUL.phim") == "_NUL.phim"

@@ -32,7 +32,7 @@ Giải nén tệp zip vào một thư mục bất kỳ rồi:
 
 | Hệ điều hành | Cách chạy |
 |---|---|
-| **Windows 10/11** | Bấm đúp **`Chay_Windows.bat`** |
+| **Windows 10/11** | Bấm đúp **`Chay_Windows.bat`**. Nếu Windows hỏi vì tệp tải từ mạng, chọn *Run* (hoặc *More info → Run anyway*) |
 | **macOS** | Bấm đúp **`Chay_macOS.command`**. Lần đầu macOS sẽ chặn vì tệp tải từ mạng — xem ghi chú ngay bên dưới |
 | **Linux** | Mở terminal trong thư mục và chạy `./chay_linux.sh` |
 
@@ -43,16 +43,27 @@ Giải nén tệp zip vào một thư mục bất kỳ rồi:
 - Hoặc bấm đúp `Chay_macOS.command`, đóng hộp cảnh báo, rồi vào *System Settings → Privacy & Security* bấm
   **Open Anyway** (macOS 14 trở về trước: bấm chuột phải vào tệp → *Open*).
 
-Lần chạy đầu cần mạng. Tệp khởi động tự làm các việc sau, tất cả nằm gọn trong thư mục ứng dụng:
+Lần chạy đầu cần mạng. Tệp khởi động tự làm các việc sau:
 
 1. Tải công cụ cài đặt `uv` vào `runtime/` (nếu máy chưa có).
 2. Tạo môi trường Python 3.12 riêng trong `.venv/` — **không cần cài Python trước**, không đụng tới Python sẵn có.
 3. Cài thư viện (vài trăm MB, đã gồm cả ffmpeg).
 4. Mở giao diện tại `http://127.0.0.1:8760`.
 
-Các lần sau khởi động trong vài giây. Giữ cửa sổ dòng lệnh mở trong lúc dùng; đóng nó (hoặc nhấn `Ctrl+C`) để thoát.
+Các lần sau khởi động trong vài giây. Giữ cửa sổ dòng lệnh mở trong lúc dùng; đóng nó (hoặc nhấn `Ctrl+C`) để thoát —
+việc đang xử lý dở sẽ dừng theo. Bấm đúp tệp khởi động khi ứng dụng đang chạy chỉ mở lại giao diện, không chạy bản thứ hai.
 
-Muốn gỡ: xoá cả thư mục ứng dụng. Dữ liệu của bạn nằm trong `data/`.
+Bạn có thể đổi tên hoặc chuyển thư mục ứng dụng đi chỗ khác bất cứ lúc nào; tên thư mục có dấu tiếng Việt, khoảng
+trắng hay dấu ngoặc đều dùng được. Dự án, mô hình và cài đặt nằm trong `data/` nên đi theo thư mục.
+
+**Những thứ nằm ngoài thư mục ứng dụng** (chỉ có hai):
+
+- Bản Python 3.12 do `uv` tải về, khoảng 100 MB: `%APPDATA%\uv\python` trên Windows, `~/.local/share/uv/python` trên
+  macOS và Linux.
+- Riêng Windows, khi thư mục ứng dụng có dấu và bạn dùng giọng Piper: một lối tắt thư mục (không chứa dữ liệu) trong
+  `C:\ProgramData\DichVideoStudio`, vì thư viện phát âm của Piper không đọc được đường dẫn có dấu.
+
+Muốn gỡ: xoá thư mục ứng dụng, và nếu muốn sạch hẳn thì xoá thêm hai chỗ trên.
 
 ### Yêu cầu
 
@@ -128,6 +139,9 @@ Chỉ những dữ liệu sau rời khỏi máy, và chỉ khi bạn dùng tính
 - Âm thanh gửi tới dịch vụ nhận dạng, nếu bạn chọn "Nhận dạng qua API".
 - Yêu cầu tải mô hình (Hugging Face) và tải video từ liên kết bạn dán vào.
 
+Ứng dụng không thu thập hay gửi số liệu sử dụng. Hai thư viện kèm theo có sẵn cơ chế gửi số liệu về nhà phát triển
+của chúng (ONNX Runtime về Microsoft, Hugging Face Hub); ứng dụng đã tắt cả hai.
+
 Chỉ dịch và đăng lại những video bạn có quyền sử dụng.
 
 ## Giới hạn đã biết
@@ -143,47 +157,69 @@ Chỉ dịch và đăng lại những video bạn có quyền sử dụng.
 
 ## Tình trạng kiểm thử
 
-Nói rõ để bạn biết phần nào đã được chứng minh, phần nào chưa:
+Nói rõ để bạn biết phần nào đã được chứng minh, phần nào chưa.
 
-**Đã kiểm thử** (Linux x86_64, Python 3.12, CPU 4 nhân, không có card đồ hoạ):
+**Đã kiểm thử trên cả Windows, macOS và Linux** (máy ảo của GitHub Actions: Windows x64, macOS Apple Silicon,
+Ubuntu x64 — quy trình nằm trong `.github/workflows/kiem-tra.yml` của kho mã). Mỗi lượt làm đúng như người dùng mới:
 
-- 99 test tự động (`tests/`): phụ đề, tách câu, khớp thời lượng lồng tiếng, trộn âm thanh, dựng video thật
-  (kể cả video kích thước lẻ và điểm ảnh không vuông), logic OCR, kho dự án, cấu hình, API chạy trên máy chủ thật.
-- Chạy trọn quy trình trên **một video thật** dài 2 phút 7 giây (720p, có phụ đề cứng, giọng hoạt hình trên nền nhạc):
-  OCR đọc được 23 câu, nghe giọng nói được 10 câu (khớp phụ đề cứng 79–100%), lồng tiếng 23 câu bằng giọng Edge,
-  xuất video có phụ đề Việt đè lên vùng che. Rãnh tiếng lồng được nhận dạng lại bằng Whisper: đủ 101/101 từ,
-  độ khớp 90%. Bản dịch của lần chạy này được viết tay rồi nhập vào (xem mục dưới).
-- Giao diện: chạy bằng trình duyệt Chromium tự động — tải video lên, chờ xử lý, sửa phụ đề, tách/hoàn tác,
-  đổi phông, vẽ/di chuyển/đổi cỡ vùng che, xuất lại; không có lỗi trong console.
-- Bộ cài Linux: giải nén zip vào thư mục sạch, tự tải `uv`, tạo môi trường, cài thư viện, tự kiểm tra đạt.
-- Giọng đọc: cả 14 giọng Edge và 2 giọng Piper đọc tiếng Việt được Whisper nhận dạng lại đúng 92–100%.
+- Giải nén bản zip vào một thư mục tên có dấu tiếng Việt, khoảng trắng, dấu ngoặc và dấu `&`; chạy tệp khởi động:
+  tự tải `uv`, tự tải Python 3.12 (đặt trong thư mục có dấu, như máy có tên người dùng có dấu), cài đúng bộ thư viện
+  đã khoá phiên bản, tự kiểm tra đạt. Chạy lại lần hai không cài lại. Đổi tên thư mục rồi chạy lại vẫn dùng được.
+- Khởi động máy chủ, mở trang chủ, tắt bằng lệnh tắt.
+- Toàn bộ test tự động (`tests/`, hơn 100 test): phụ đề, tách câu, khớp thời lượng lồng tiếng, trộn âm thanh, dựng
+  video thật (kể cả kích thước lẻ và điểm ảnh không vuông), logic OCR, kho dự án, cấu hình, các bộ dịch và giọng đọc
+  qua máy chủ giả lập, API chạy trên máy chủ thật, tua video, tệp bị khoá, tải video từ liên kết (máy chủ cục bộ).
+- Một lượt xử lý trọn vẹn bằng bộ máy thật: giọng Piper đọc một câu → Whisper (mô hình `tiny`) nhận dạng → dịch →
+  lồng tiếng bằng Piper → xuất MP4 có phụ đề; sau đó Whisper nghe lại video kết quả và phải nghe ra đúng câu lồng tiếng.
+- **Google Dịch miễn phí** với một lô 12 câu tiếng Trung thật: đủ 12 câu, đúng thứ tự, đúng nghĩa.
+- **Giọng Edge** mặc định (Hoài My): đọc một câu, Whisper nghe lại khớp khoảng 85%.
+- Riêng macOS: bộ mã hoá phần cứng VideoToolbox được dùng và cho video đúng. Riêng Windows: ffmpeg chạy ngầm tự
+  tắt khi ứng dụng bị đóng đột ngột.
+
+Việc chạy thử trên Windows đã bắt được hai lỗi thật, đều đã sửa và có test: thư viện phát âm của giọng Piper làm
+tắt cả ứng dụng khi thư mục có dấu, và các lệnh in tiếng Việt ra cửa sổ dòng lệnh.
+
+**Đã kiểm thử thêm trên máy phát triển** (Linux x64, CPU 4 nhân, không có card đồ hoạ):
+
+- Trọn quy trình trên **một video thật** dài 2 phút 7 giây (720p, có phụ đề cứng, giọng hoạt hình trên nền nhạc), với
+  mô hình mặc định `large-v3-turbo`: OCR đọc được 23 câu, nghe giọng nói được 10 câu (khớp phụ đề cứng 79–100%),
+  lồng tiếng 23 câu bằng giọng Edge, xuất video có phụ đề Việt đè lên vùng che. Rãnh tiếng lồng được Whisper nghe
+  lại đủ 101/101 từ, độ khớp 90%. Bản dịch của lần chạy này được viết tay rồi nhập vào, vì hôm đó Google Dịch từ
+  chối máy phát triển (lỗi 429).
+- Giao diện, bằng trình duyệt Chromium điều khiển tự động: tải video lên, chờ xử lý, sửa phụ đề, tách/hoàn tác, đổi
+  phông, vẽ/di chuyển/đổi cỡ vùng che, xuất lại, phát và tua video kết quả; không có lỗi trong console.
+- Cả 14 giọng Edge và 2 giọng Piper đọc tiếng Việt, Whisper nhận dạng lại đúng 92–100%.
 
 **Chỉ kiểm thử bằng máy chủ giả lập** (đúng giao thức, chưa gọi dịch vụ thật vì không có khoá API):
 bộ dịch Claude và các bộ dịch tương thích OpenAI, nhận dạng qua API, giọng đọc OpenAI và ElevenLabs.
 
 **Chưa kiểm thử được:**
 
-- **Google Dịch miễn phí trên dữ liệu thật**: từ máy kiểm thử, cổng này trả lỗi giới hạn tần suất (429) nên chỉ
-  xác nhận được một lần gọi đơn lẻ và phần xử lý lỗi. Việc gộp nhiều câu vào một yêu cầu được kiểm bằng máy chủ giả lập.
-- **Windows và macOS**: tệp khởi động được viết cẩn thận và danh sách thư viện đã được xác nhận là có bản dựng sẵn
-  cho Windows x64, macOS (Apple Silicon và Intel) và Linux, nhưng chưa được chạy trên máy thật.
-- Card NVIDIA và các bộ mã hoá phần cứng (NVENC, Quick Sync, AMF, VideoToolbox). Ứng dụng thử bộ mã hoá trước
-  khi dùng và tự chuyển về CPU nếu không chạy được.
-- Tải video từ các trang thật (YouTube, Bilibili, Douyin…): chỉ thử với máy chủ tệp cục bộ.
+- **Thao tác bằng tay trên Windows và macOS**: máy ảo không có màn hình, nên việc bấm đúp tệp khởi động, các hộp
+  cảnh báo bảo mật của hệ điều hành và việc tự mở trình duyệt chưa được thử; giao diện mới chỉ thử trên Chromium
+  (Chrome, Edge), chưa thử Safari và Firefox.
+- Máy Mac dùng chip Intel và Windows trên chip ARM. Danh sách thư viện có bản dựng sẵn cho Mac Intel; chưa chạy thử.
+- Card NVIDIA và các bộ mã hoá phần cứng NVENC, Quick Sync, AMF. Ứng dụng thử bộ mã hoá trước khi dùng và tự
+  chuyển về CPU nếu không chạy được.
+- Tải video từ các trang thật (YouTube, Bilibili, Douyin…).
+- Video dài (trên 10 phút) và nhiều video xếp hàng liên tiếp.
 
-Nếu gặp lỗi ở những phần chưa kiểm thử, hãy gửi nội dung thẻ *Nhật ký* của dự án và tệp `data/logs/app.log`.
+Nếu gặp lỗi, hãy gửi nội dung thẻ *Nhật ký* của dự án và tệp `data/logs/app.log`.
 
 ## Gỡ rối
 
 | Hiện tượng | Cách xử lý |
 |---|---|
 | Tệp khởi động báo không tải được `uv` | Mạng chặn GitHub. Cài Python 3.12 từ python.org (tích *Add python.exe to PATH*) rồi chạy lại — tệp khởi động sẽ dùng Python đó. |
+| Cài thư viện dừng giữa chừng | Kiểm tra mạng rồi chạy lại tệp khởi động; nó cài tiếp phần còn thiếu. |
+| Windows báo đường dẫn quá dài | Giải nén ứng dụng vào thư mục ngắn, ví dụ `C:\DichVideoStudio`. |
 | Bước Dịch báo Google giới hạn tần suất | Chờ ít phút rồi bấm *Thử lại*, hoặc chọn một bộ dịch AI. |
 | Không tải được mô hình nhận dạng | Kiểm tra mạng. Có thể đặt máy chủ gương Hugging Face trong *Cài đặt → Hệ thống & mạng*. |
 | Giọng Edge báo lỗi | Dịch vụ tạm ngưng hoặc mạng chặn. Chuyển sang giọng Piper (ngoại tuyến). |
 | Nhận dạng quá chậm | Chọn mô hình "Nhỏ", hoặc dùng "Nhận dạng qua API". |
 | Trình duyệt không phát video trong trình sửa | Chạy lại bước *Chuẩn bị* để tạo bản xem trước. |
-| Cổng 8760 đang bận | Ứng dụng tự chuyển sang cổng kế tiếp; xem địa chỉ in trong cửa sổ dòng lệnh. |
+| Cổng 8760 do chương trình khác dùng | Ứng dụng tự chuyển sang cổng kế tiếp; xem địa chỉ in trong cửa sổ dòng lệnh. |
+| Xuất lại báo không ghi đè được tệp kết quả | Tệp video cũ đang mở trong trình phát khác. Đóng trình phát rồi xuất lại. |
 | Muốn kiểm tra bản cài | Chạy tệp khởi động kèm `--check`. |
 
 ## Dành cho lập trình viên
@@ -205,11 +241,13 @@ tests/            test tự động
 tools/            bootstrap.py (cài thư viện), build_zip.py (đóng gói), gen_notices.py
 ```
 
-Chạy test (cần thêm `pytest`):
+Chạy test (cần thêm `pytest`; trên Windows thay `runtime/uv` bằng `runtime\uv.exe` và `.venv/bin/python` bằng
+`.venv\Scripts\python.exe`):
 
 ```
-.venv/bin/python -m pip install pytest      # hoặc: runtime/uv pip install --python .venv/bin/python pytest
-.venv/bin/python -m pytest tests
+runtime/uv pip install --python .venv/bin/python pytest
+.venv/bin/python -m pytest tests                          # không cần mạng
+DVS_LIVE=1 .venv/bin/python -m pytest tests/test_live.py  # bộ máy và dịch vụ thật: tải ~140 MB mô hình, gọi Google Dịch và giọng Edge
 ```
 
 Đóng gói: `python tools/build_zip.py` → `dist/DichVideoStudio-<phiên bản>.zip`.

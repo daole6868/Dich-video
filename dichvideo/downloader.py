@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 from typing import Callable
 
-from . import ffmpeg, projects
+from . import config, ffmpeg, projects
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +87,7 @@ def download(url: str, dest_dir: str | os.PathLike, *,
         "progress_hooks": [hook],
         "logger": _Quiet(),
         "ffmpeg_location": ffmpeg.ffmpeg_path(),
+        "cachedir": str(config.DATA_DIR / "cache" / "yt-dlp"),  # mặc định là ~/.cache/yt-dlp
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:

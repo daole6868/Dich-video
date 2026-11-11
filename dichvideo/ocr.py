@@ -131,7 +131,7 @@ def _iter_frames(src: str, crop_px: tuple[int, int, int, int], out_size: tuple[i
         vf += f",scale={ow}:{oh}:flags=bilinear"
     cmd = [ffmpeg.ffmpeg_path(), "-hide_banner", "-nostdin", "-loglevel", "error", "-i", str(src),
            "-map", "0:v:0", "-an", "-vf", vf, "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=ffmpeg._NO_WINDOW)
+    proc = ffmpeg.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     size = ow * oh * 3
     try:
         index = 0

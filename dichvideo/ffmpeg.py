@@ -28,6 +28,80 @@ class FFmpegError(RuntimeError):
     pass
 
 
+# --------------------------------------------------------------------------
+# Tiến trình con
+# --------------------------------------------------------------------------
+
+_job_handle = None
+_job_lock = threading.Lock()
+
+
+def _tie_to_this_process(proc: subprocess.Popen) -> None:
+    """Windows: cho tiến trình con tự tắt khi ứng dụng bị đóng (kể cả khi bấm nút X của cửa sổ).
+
+    ffmpeg được chạy không kèm cửa sổ dòng lệnh nên không nhận được tín hiệu Ctrl+C hay "đóng cửa sổ";
+    nếu không làm gì, nó sẽ tiếp tục mã hoá ngầm sau khi ứng dụng đã tắt. Gắn nó vào một "job object"
+    có cờ KILL_ON_JOB_CLOSE: khi tiến trình của ứng dụng kết thúc vì bất cứ lý do gì, Windows đóng
+    job và tắt luôn các tiến trình trong đó. Trên Linux/macOS, đóng cửa sổ dòng lệnh hay Ctrl+C đã
+    gửi tín hiệu tới cả nhóm tiến trình nên không cần.
+    """
+    if sys.platform != "win32":
+        return
+    global _job_handle
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        k32.AssignProcessToJobObject.restype = wintypes.BOOL
+        with _job_lock:
+            if _job_handle is None:
+                class BasicLimits(ctypes.Structure):
+                    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong),
+                                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                                ("LimitFlags", wintypes.DWORD),
+                                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                                ("ActiveProcessLimit", wintypes.DWORD),
+                                ("Affinity", ctypes.c_size_t),
+                                ("PriorityClass", wintypes.DWORD),
+                                ("SchedulingClass", wintypes.DWORD)]
+
+                class ExtendedLimits(ctypes.Structure):
+                    _fields_ = [("BasicLimitInformation", BasicLimits),
+                                ("IoInfo", ctypes.c_ulonglong * 6),
+                                ("ProcessMemoryLimit", ctypes.c_size_t),
+                                ("JobMemoryLimit", ctypes.c_size_t),
+                                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                                ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+                k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+                k32.CreateJobObjectW.restype = wintypes.HANDLE
+                k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+                k32.SetInformationJobObject.restype = wintypes.BOOL
+                job = k32.CreateJobObjectW(None, None)
+                if not job:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                limits = ExtendedLimits()
+                limits.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                # 9 = JobObjectExtendedLimitInformation
+                if not k32.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                _job_handle = job  # giữ mở suốt đời ứng dụng; Windows tự đóng khi tiến trình kết thúc
+        if not k32.AssignProcessToJobObject(_job_handle, int(proc._handle)):  # type: ignore[attr-defined]
+            raise ctypes.WinError(ctypes.get_last_error())
+    except Exception as e:  # noqa: BLE001 - chỉ là lớp bảo vệ thêm, không được làm hỏng việc chính
+        log.debug("Không gắn được tiến trình con vào job: %s", e)
+
+
+def spawn(cmd: Sequence[str], **kwargs) -> subprocess.Popen:
+    """``subprocess.Popen`` cho ffmpeg: không hiện cửa sổ, và tự tắt theo ứng dụng trên Windows."""
+    proc = subprocess.Popen(list(cmd), creationflags=_NO_WINDOW, **kwargs)
+    _tie_to_this_process(proc)
+    return proc
+
+
 class Cancelled(Exception):
     """Người dùng huỷ tác vụ."""
 
@@ -279,8 +353,7 @@ def run(args: Sequence[str], *, duration: float | None = None,
     stderr_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(stderr_path, "wb") as errf:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf, cwd=cwd,
-                                    creationflags=_NO_WINDOW)
+            proc = spawn(cmd, stdout=subprocess.PIPE, stderr=errf, cwd=cwd)
             if cancel is not None:
                 # Luồng canh: huỷ được ngay cả khi ffmpeg đang im lặng (không in tiến độ).
                 def _watch() -> None:

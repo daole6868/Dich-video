@@ -2,7 +2,10 @@
 
 import json
 import os
+import subprocess
+import sys
 import threading
+import time
 import wave
 
 import numpy as np
@@ -271,18 +274,21 @@ def test_render_real_video_with_subtitles_cover_and_soft_subs(sample_video, tmp_
     seen = []
     info = render.render(sample_video, tmp_path / "ra.mp4", project_dir=tmp_path, segments=segs, settings=st,
                          media=media, progress=lambda p, m: seen.append(p))
-    assert info["burned"] and info["soft_subs"] and info["cover"] == "subtitle" and info["encoder"] == "libx264"
+    assert info["burned"] and info["soft_subs"] and info["cover"] == "subtitle"
+    # Máy có bộ mã hoá phần cứng dùng được (ví dụ VideoToolbox trên Mac) thì chế độ tự động chọn nó.
+    assert info["encoder"] == ffmpeg.pick_encoder("auto")
     out = ffmpeg.probe(tmp_path / "ra.mp4")
     assert (out["width"], out["height"]) == (640, 360) and out["duration"] == pytest.approx(3.0, abs=0.2)
     assert seen and seen[-1] == 1.0
-    assert (tmp_path / "work" / "render" / "cover.cmd").read_text().startswith("0.000 overlay@cv1 enable 1;")
+    assert (tmp_path / "work" / "render" / "cover.cmd").read_text(encoding="utf-8").startswith("0.000 overlay@cv1 enable 1;")
     assert "Xin chào các bạn" in (tmp_path / "work" / "render" / "subs.ass").read_text(encoding="utf-8")
     # Phụ đề thực sự được vẽ lên hình: khung có câu thoại khác khung cùng thời điểm khi không gắn phụ đề.
     from PIL import Image, ImageChops
     st2 = config.new_project_settings()
     st2["subtitle"]["burn"] = False
-    render.render(sample_video, tmp_path / "tron.mp4", project_dir=tmp_path, segments=segs, settings=st2, media=media)
-    assert ffmpeg.probe(tmp_path / "tron.mp4")["video_codec"] == "h264"
+    info2 = render.render(sample_video, tmp_path / "tron.mp4", project_dir=tmp_path, segments=segs, settings=st2, media=media)
+    # Không gắn phụ đề, không che: hình được chép nguyên, không mã hoá lại.
+    assert info2["encoder"] == "copy" and ffmpeg.probe(tmp_path / "tron.mp4")["video_codec"] == "h264"
     ffmpeg.extract_frame(tmp_path / "ra.mp4", 0.8, tmp_path / "a.png")
     ffmpeg.extract_frame(tmp_path / "tron.mp4", 0.8, tmp_path / "b.png")
     diff = ImageChops.difference(Image.open(tmp_path / "a.png").convert("L"), Image.open(tmp_path / "b.png").convert("L"))
@@ -318,6 +324,7 @@ def test_render_non_square_pixels_become_square(tmp_path):
     assert render.source_frame_size(media) == (0, 0)
     st = config.new_project_settings()
     st["subtitle"]["burn"] = False
+    st["output"]["encoder"] = "cpu"  # ép mã hoá bằng CPU dù máy có bộ mã hoá phần cứng
     info = render.render(src, tmp_path / "ra.mp4", project_dir=tmp_path, segments=[], settings=st, media=media)
     out = ffmpeg.probe(tmp_path / "ra.mp4")
     assert (out["width"], out["height"], out["sar"]) == (1024, 576, 1.0) and info["encoder"] == "libx264"
@@ -460,6 +467,93 @@ def test_project_delete_with_locked_file_then_leftovers_are_cleaned(monkeypatch)
     monkeypatch.undo()
     assert projects.remove_leftovers() == 1 and not d.exists()
     assert projects.remove_leftovers() == 0
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="cơ chế job object chỉ có trên Windows")
+def test_ffmpeg_child_is_killed_when_the_app_dies(tmp_path):
+    """Ứng dụng bị tắt đột ngột (đóng cửa sổ) thì ffmpeg đang chạy ngầm cũng phải dừng theo."""
+    import ctypes
+
+    k32 = ctypes.windll.kernel32
+    k32.OpenProcess.restype = ctypes.c_void_p
+
+    def alive(pid: int) -> bool:
+        handle = k32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return False
+        try:
+            return k32.WaitForSingleObject(ctypes.c_void_p(handle), 0) == 0x102  # WAIT_TIMEOUT: còn chạy
+        finally:
+            k32.CloseHandle(ctypes.c_void_p(handle))
+
+    script = tmp_path / "ung dung gia.py"
+    script.write_text(
+        "import sys, time\n"
+        f"sys.path.insert(0, {str(config.ROOT)!r})\n"
+        "from dichvideo import ffmpeg\n"
+        "p = ffmpeg.spawn([ffmpeg.ffmpeg_path(), '-hide_banner', '-loglevel', 'error', '-nostdin', '-re',\n"
+        "                  '-f', 'lavfi', '-i', 'testsrc2=d=120', '-f', 'null', '-'])\n"
+        "print(p.pid, flush=True)\n"
+        "time.sleep(120)\n", encoding="utf-8")
+    app = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE)
+    child = 0
+    try:
+        child = int(app.stdout.readline())
+        time.sleep(0.5)
+        assert alive(child), "ffmpeg lẽ ra phải đang chạy"
+        app.kill()
+        app.wait()
+        end = time.time() + 10
+        while alive(child) and time.time() < end:
+            time.sleep(0.2)
+        assert not alive(child), "ffmpeg vẫn chạy ngầm sau khi ứng dụng đã tắt"
+    finally:
+        if app.poll() is None:
+            app.kill()
+        if child and alive(child):
+            subprocess.run(["taskkill", "/PID", str(child), "/F"], capture_output=True)
+
+
+def test_native_path_is_unchanged_when_no_alias_is_needed(tmp_path):
+    plain = tmp_path / "thu muc"
+    plain.mkdir()
+    if os.name != "nt":
+        assert fileops.native_path(tmp_path / "thư mục có dấu") == str(tmp_path / "thư mục có dấu")
+    elif str(plain).isascii():
+        assert fileops.native_path(plain) == str(plain)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="chỉ Windows mới cần đường dẫn thay thế")
+def test_native_path_gives_ascii_alias_for_accented_folders(tmp_path):
+    """Thư viện C không hiểu đường dẫn có dấu trên Windows: phải có đường dẫn ASCII trỏ tới cùng chỗ."""
+    folder = tmp_path / "thư mục có dấu"
+    folder.mkdir()
+    (folder / "phontab").write_bytes(b"du lieu")
+    alias = fileops.native_path(folder)
+    assert alias.isascii() and os.path.samefile(alias, folder)
+    assert open(os.path.join(alias, "phontab"), "rb").read() == b"du lieu"
+    one = fileops.native_path(folder / "phontab")
+    assert one.isascii() and os.path.samefile(one, folder / "phontab")
+    # Nhánh lối tắt thư mục (junction) - dùng khi ổ đĩa không tạo tên ngắn 8.3.
+    link = fileops._junction_alias(str(folder))
+    assert link and link.isascii() and os.path.samefile(link, folder)
+    assert fileops._junction_alias(str(folder)) == link  # gọi lại thì dùng lại lối tắt cũ
+    os.rmdir(link)  # gỡ lối tắt không được đụng tới thư mục thật
+    assert (folder / "phontab").is_file()
+
+
+def test_piper_never_lets_espeak_kill_the_app(tmp_path, monkeypatch):
+    """espeak gọi exit(1) khi không đọc được dữ liệu; ứng dụng phải chặn trước và báo lỗi bình thường."""
+    import piper.phonemize_espeak as espeak
+
+    from dichvideo.tts import piper_engine
+
+    monkeypatch.setattr(espeak, "ESPEAK_DATA_DIR", tmp_path / "không có")
+    with pytest.raises(RuntimeError, match="Piper"):
+        piper_engine._espeak_data_dir()
+    monkeypatch.undo()
+    safe = piper_engine._espeak_data_dir()
+    assert os.path.isfile(os.path.join(safe, "phontab")) and (os.name != "nt" or safe.isascii())
 
 
 def test_safe_name_keeps_unicode_and_strips_reserved():

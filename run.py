@@ -86,7 +86,13 @@ def main() -> int:
     print("=" * 62)
     if not args.no_browser:
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
-    server.run()
+    try:
+        server.run()
+    finally:
+        # Thoát bằng Ctrl+C hay nút "Tắt ứng dụng": dừng việc đang chạy (kể cả ffmpeg) trước khi thoát.
+        from dichvideo import jobs
+
+        jobs.manager.shutdown(wait=8.0)
     return 0
 
 

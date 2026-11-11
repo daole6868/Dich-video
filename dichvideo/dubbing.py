@@ -307,8 +307,7 @@ def mix(background: str | os.PathLike | None, dub_wav: str | os.PathLike, out_wa
     if background:
         cmd = [ffmpeg.ffmpeg_path(), "-hide_banner", "-nostdin", "-loglevel", "error", "-i", str(background),
                "-map", "0:a:0", "-vn", "-ac", "2", "-ar", str(SR), "-f", "s16le", "pipe:1"]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                creationflags=ffmpeg._NO_WINDOW)
+        proc = ffmpeg.spawn(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         with wave.open(str(dub_wav), "rb") as dub, wave.open(str(out_wav), "wb") as out:
             out.setnchannels(2)

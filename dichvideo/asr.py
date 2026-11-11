@@ -24,7 +24,7 @@ from typing import Callable
 
 import requests
 
-from . import config, ffmpeg, segmenter
+from . import config, ffmpeg, fileops, segmenter
 from .ffmpeg import Cancelled
 
 log = logging.getLogger(__name__)
@@ -214,14 +214,26 @@ def _cpu_threads() -> int:
 def _load_model(name: str, device: str):
     from faster_whisper import WhisperModel
 
-    path = str(model_dir(name))
-    if device == "cuda":
-        import ctranslate2
+    def load(path: str):
+        if device == "cuda":
+            import ctranslate2
 
-        supported = ctranslate2.get_supported_compute_types("cuda")
-        compute = next((c for c in ("float16", "int8_float16", "int8", "float32") if c in supported), "default")
-        return WhisperModel(path, device="cuda", compute_type=compute)
-    return WhisperModel(path, device="cpu", compute_type="int8", cpu_threads=_cpu_threads())
+            supported = ctranslate2.get_supported_compute_types("cuda")
+            compute = next((c for c in ("float16", "int8_float16", "int8", "float32") if c in supported), "default")
+            return WhisperModel(path, device="cuda", compute_type=compute)
+        return WhisperModel(path, device="cpu", compute_type="int8", cpu_threads=_cpu_threads())
+
+    path = str(model_dir(name))
+    try:
+        return load(path)
+    except Exception:  # noqa: BLE001 - xem ghi chú dưới
+        # Windows + thư mục có dấu: thư viện có thể không mở được tệp mô hình; thử lại bằng đường dẫn
+        # thay thế chỉ gồm ký tự ASCII. Nếu đường dẫn vốn không có dấu thì đây là lỗi thật, báo nguyên.
+        if os.name != "nt" or path.isascii():
+            raise
+        safe = fileops.native_path(path)
+        log.info("Nạp mô hình qua đường dẫn thay thế %s", safe)
+        return load(safe)
 
 
 # --------------------------------------------------------------------------

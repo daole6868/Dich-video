@@ -110,7 +110,7 @@ jobs:
           DVS_LIVE: "1"
         run: |
           Set-Location -LiteralPath $env:APP_DIR
-          & .\.venv\Scripts\python.exe -m pytest tests\test_live.py -v -p no:cacheprovider --basetemp (Join-Path $env:RUNNER_TEMP 'tệp tạm 2')
+          & .\.venv\Scripts\python.exe -m pytest tests\test_live.py -v -p no:cacheprovider -o log_cli=true -o log_cli_level=INFO --basetemp (Join-Path $env:RUNNER_TEMP 'tệp tạm 2')
           exit $LASTEXITCODE
 
       - name: Nhật ký khi có lỗi
@@ -194,7 +194,7 @@ jobs:
           DVS_LIVE: "1"
         run: |
           cd "$APP_DIR"
-          .venv/bin/python -m pytest tests/test_live.py -v -p no:cacheprovider --basetemp "$RUNNER_TEMP/tệp tạm 2"
+          .venv/bin/python -m pytest tests/test_live.py -v -p no:cacheprovider -o log_cli=true -o log_cli_level=INFO --basetemp "$RUNNER_TEMP/tệp tạm 2"
 
       - name: Nhật ký khi có lỗi
         if: failure()

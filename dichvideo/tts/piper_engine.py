@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import wave
 from pathlib import Path
 
-from .. import config
+from .. import config, fileops
 
 log = logging.getLogger(__name__)
 # Piper in một dòng cảnh báo cho mỗi âm vị không có trong giọng (bị bỏ qua khi đọc), làm ngập
@@ -69,6 +70,23 @@ def ensure_voice(voice: str) -> tuple[Path, Path]:
     return onnx, cfg
 
 
+def _espeak_data_dir() -> str:
+    """Thư mục dữ liệu phát âm của espeak, ở dạng đường dẫn mà espeak chắc chắn mở được.
+
+    Phải kiểm tra trước: nếu espeak không đọc được dữ liệu, nó gọi ``exit(1)`` và làm tắt luôn cả ứng
+    dụng chứ không báo lỗi. Trên Windows nó không hiểu đường dẫn có dấu, nên cần đường dẫn thay thế.
+    """
+    from piper.phonemize_espeak import ESPEAK_DATA_DIR
+
+    if not (Path(ESPEAK_DATA_DIR) / "phontab").is_file():
+        raise RuntimeError("Thiếu dữ liệu phát âm của giọng Piper. Hãy chạy lại tệp khởi động để cài lại thư viện.")
+    safe = fileops.native_path(ESPEAK_DATA_DIR)
+    if not os.path.isfile(os.path.join(safe, "phontab")):
+        raise RuntimeError("Không mở được dữ liệu phát âm của giọng Piper. Hãy chuyển thư mục ứng dụng tới một "
+                           "đường dẫn không dấu (ví dụ C:\\DichVideoStudio) rồi chạy lại.")
+    return safe
+
+
 def synthesize(text: str, out_path: str, *, voice: str, rate: int = 0, pitch: int = 0) -> None:
     try:
         from piper import PiperVoice, SynthesisConfig
@@ -79,7 +97,7 @@ def synthesize(text: str, out_path: str, *, voice: str, rate: int = 0, pitch: in
         model = _loaded.get(meta["id"])
         if model is None:
             onnx, cfg = ensure_voice(meta["id"])
-            model = PiperVoice.load(str(onnx), config_path=str(cfg))
+            model = PiperVoice.load(str(onnx), config_path=str(cfg), espeak_data_dir=_espeak_data_dir())
             _loaded.clear()  # chỉ giữ một giọng trong bộ nhớ
             _loaded[meta["id"]] = model
         speed = 1.0 + max(-50, min(100, int(rate))) / 100.0

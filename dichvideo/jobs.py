@@ -40,14 +40,18 @@ class JobManager:
             self._thread = threading.Thread(target=self._loop, daemon=True, name="hang-doi")
             self._thread.start()
 
-    def shutdown(self) -> None:
+    def shutdown(self, wait: float = 0.0) -> None:
+        """Dừng hàng đợi và huỷ việc đang chạy; ``wait`` > 0 thì chờ việc đang chạy dừng hẳn."""
         self._stop = True
         with self._lock:
             for job in self._queue:
                 job.cancel.set()
             if self._current:
                 self._current.cancel.set()
+            thread = self._thread
         self._wake.set()
+        if wait > 0 and thread is not None and thread is not threading.current_thread():
+            thread.join(wait)
 
     def busy(self, pid: str) -> bool:
         with self._lock:

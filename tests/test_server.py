@@ -1,9 +1,11 @@
 """Test API bằng một máy chủ thật chạy trong tiến trình test (không cần mạng, không cần mô hình)."""
 
+import socket
+
 import pytest
 import requests
 
-from dichvideo import ffmpeg
+from dichvideo import config, ffmpeg
 
 
 @pytest.fixture(scope="module")
@@ -25,6 +27,19 @@ def test_guard_blocks_foreign_host_and_cross_site_writes(base, http):
     assert http.post(base + "/api/projects", json={}, headers={"Origin": "null"}).status_code == 403
     assert http.post(base + "/api/projects", json={}, headers={"Origin": base}).status_code == 400  # cùng nguồn: qua cổng bảo vệ
     assert http.get(base + "/api/system", headers={"Origin": "https://trang-la.example"}).status_code == 200  # đọc không đổi dữ liệu
+
+
+def test_ping_and_second_launch_detection(base, http):
+    import run
+
+    info = http.get(base + "/api/ping").json()
+    assert info["app"] == "Dịch Video Studio" and info["data_dir"] == str(config.DATA_DIR)
+    port = int(base.rsplit(":", 1)[1])
+    assert run.running_instance(port) is True and run.port_free("127.0.0.1", port) is False
+    with socket.socket() as s:  # cổng chưa ai dùng
+        s.bind(("127.0.0.1", 0))
+        free = s.getsockname()[1]
+    assert run.running_instance(free) is False
 
 
 def test_static_pages_and_fonts(base, http):

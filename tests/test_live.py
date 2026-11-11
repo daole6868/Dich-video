@@ -12,6 +12,7 @@ espeak và ffmpeg/libass đều chạy được, kể cả khi thư mục dữ l
 
 import difflib
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -21,8 +22,10 @@ import pytest
 import requests
 
 from dichvideo import asr, config, ffmpeg, ocr, tts
-from dichvideo.translate import openai_compat
+from dichvideo.translate import TranslateError, google, openai_compat
 from mock_servers import MockServer, chat_reply
+
+log = logging.getLogger("test_live")
 
 pytestmark = pytest.mark.skipif(os.environ.get("DVS_LIVE") != "1",
                                 reason="cần mạng để tải mô hình; bật bằng DVS_LIVE=1")
@@ -71,6 +74,38 @@ def test_ocr_engine_reads_text_from_a_frame():
     items = ocr.read_frame_texts(ocr._make_engine(), np.asarray(img)[:, :, ::-1].copy(), need_cjk=False)
     text = " ".join(it["text"] for it in items)
     assert "2026" in text and "VIDEO" in text.upper(), text
+
+
+def test_edge_voice_speaks_vietnamese(tmp_path):
+    """Giọng mặc định (Microsoft Edge). Dịch vụ ngoài không phản hồi thì bỏ qua, không tính là lỗi."""
+    out = tmp_path / "giọng edge.mp3"
+    try:
+        made = tts.synthesize(DUB_LINE, str(out), engine="edge", voice="vi-VN-HoaiMyNeural")
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"dịch vụ giọng đọc Edge không phản hồi từ máy này: {type(e).__name__}: {e}")
+    assert made and 1.0 < ffmpeg.probe(out)["duration"] < 10.0
+    heard = heard_in(out)
+    ratio = difflib.SequenceMatcher(None, plain(heard), plain(DUB_LINE)).ratio()
+    log.info("Edge đọc, Whisper nghe được: %r (khớp %.2f)", heard, ratio)
+    assert ratio > 0.6
+
+
+def test_google_free_translation_with_real_batches(monkeypatch):
+    """Google Dịch miễn phí (bộ dịch mặc định) với một lô câu thật. Bị giới hạn tần suất thì bỏ qua."""
+    lines = ["你好，很高兴认识你。", "今天天气很好。", "我们明天去学校。", "这本书很有意思。", "他在北京工作了三年。",
+             "请问火车站怎么走？", "我想喝一杯咖啡。", "这部电影我看过两次。", "妈妈做的饭最好吃。", "别担心，一切都会好的。",
+             "你什么时候回来？", "谢谢你的帮助。"]
+    monkeypatch.setattr(google, "MAX_ATTEMPTS", 2)  # test không cố nài khi máy chủ đã từ chối
+    try:
+        out = google.translate_lines(lines, "zh", "vi")
+    except TranslateError as e:
+        pytest.skip(f"Google Dịch miễn phí từ chối máy này: {e}")
+    for zh, vi in zip(lines, out):
+        log.info("%s  =>  %s", zh, vi)
+    assert len(out) == len(lines) and all(v.strip() and v != z for z, v in zip(lines, out))
+    assert not any(re.search(r"[\u4e00-\u9fff]", v) for v in out), "bản dịch còn sót chữ Hán"
+    # Thứ tự câu phải được giữ nguyên qua việc gộp lô: kiểm vài từ khoá chắc chắn.
+    assert "trường" in out[2].lower() and "cà phê" in out[6].lower() and "cảm ơn" in out[11].lower()
 
 
 def test_whole_pipeline_with_real_engines(base, http, wait_idle, speech, tmp_path):

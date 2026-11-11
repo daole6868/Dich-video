@@ -558,6 +558,8 @@ def test_piper_never_lets_espeak_kill_the_app(tmp_path, monkeypatch):
 
 def test_safe_name_keeps_unicode_and_strips_reserved():
     assert projects.safe_name('Tập 1: "鲤鱼" <thử>|.') == "Tập 1 鲤鱼 thử"
+    assert projects.safe_name("con") == "_con" and projects.safe_name("NUL.phim") == "_NUL.phim"
+    assert projects.safe_name("concert") == "concert" and projects.safe_name("...") == "video"
     assert projects.safe_name("   ...   ") == "video" and len(projects.safe_name("a" * 300)) == 80
 
 

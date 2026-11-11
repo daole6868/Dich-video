@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import sys
 import threading
@@ -23,6 +24,51 @@ def utf8_console() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
+
+
+def keep_console_responsive() -> None:
+    """Windows: bấm chuột vào cửa sổ dòng lệnh làm chương trình "đứng hình" cho tới khi nhấn Enter
+    (chế độ QuickEdit) - người dùng dễ tưởng ứng dụng bị treo. Tắt chế độ đó trong lúc chạy."""
+    if sys.platform != "win32":
+        return
+    try:
+        import atexit
+        import ctypes
+        from ctypes import wintypes
+
+        k32 = ctypes.windll.kernel32
+        k32.GetStdHandle.argtypes = [wintypes.DWORD]
+        k32.GetStdHandle.restype = wintypes.HANDLE
+        k32.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k32.GetConsoleMode.restype = wintypes.BOOL
+        k32.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k32.SetConsoleMode.restype = wintypes.BOOL
+        handle = k32.GetStdHandle(0xFFFFFFF6)  # STD_INPUT_HANDLE (-10)
+        mode = wintypes.DWORD()
+        if not handle or not k32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return  # không chạy trong cửa sổ dòng lệnh
+        quick_edit, extended = 0x0040, 0x0080
+        if k32.SetConsoleMode(handle, (mode.value & ~quick_edit) | extended):
+            atexit.register(k32.SetConsoleMode, handle, mode.value)  # trả lại như cũ khi thoát
+    except Exception:  # noqa: BLE001 - chỉ là tiện ích, không được cản việc khởi động
+        pass
+
+
+def running_instance(port: int) -> bool:
+    """Cổng đang bận vì chính ứng dụng này (cùng thư mục dữ liệu) đã chạy sẵn?"""
+    import json
+    import urllib.request
+
+    from dichvideo import APP_NAME, config
+
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(f"http://127.0.0.1:{port}/api/ping", timeout=2) as resp:
+            info = json.loads(resp.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 - cổng do chương trình khác dùng
+        return False
+    same_data = os.path.normcase(str(info.get("data_dir", ""))) == os.path.normcase(str(config.DATA_DIR))
+    return info.get("app") == APP_NAME and same_data
 
 
 def port_free(host: str, port: int) -> bool:
@@ -64,7 +110,15 @@ def main() -> int:
 
     host = "0.0.0.0" if args.lan else args.host
     port = args.port
-    for _ in range(20):  # cổng bận (đã mở một bản khác?) thì thử cổng kế tiếp
+    if not port_free(host, port) and running_instance(port):
+        # Bấm đúp tệp khởi động lần nữa: không mở bản thứ hai (hai bản cùng ghi một thư mục dữ liệu
+        # sẽ giẫm chân nhau), chỉ mở lại giao diện của bản đang chạy.
+        url = f"http://127.0.0.1:{port}"
+        print(f"{APP_NAME} đang chạy sẵn tại {url} - mở lại giao diện.")
+        if not args.no_browser:
+            webbrowser.open(url)
+        return 0
+    for _ in range(20):  # cổng do chương trình khác dùng thì thử cổng kế tiếp
         if port_free(host, port):
             break
         port += 1
@@ -73,6 +127,7 @@ def main() -> int:
         return 1
 
     setup_logging()
+    keep_console_responsive()
     app = create_app(allow_lan=args.lan or host not in ("127.0.0.1", "localhost"))
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False))
     app.state.server = server

@@ -66,7 +66,10 @@ def safe_name(name: str, fallback: str = "video") -> str:
     """Tên tệp an toàn trên mọi hệ điều hành, vẫn giữ được tiếng Việt và chữ Hán."""
     name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", name or "")
     name = re.sub(r"\s+", " ", name).strip(" .")
-    return name[:80].rstrip(" .") or fallback
+    name = name[:80].rstrip(" .")
+    if re.fullmatch(r"(?i)(con|prn|aux|nul|com\d|lpt\d)", name.split(".")[0].strip()):
+        name = "_" + name  # Windows không cho đặt tên tệp trùng tên thiết bị (CON, NUL, COM1…)
+    return name or fallback
 
 
 def blank_steps() -> dict:

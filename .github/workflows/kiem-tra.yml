@@ -40,11 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Đóng gói zip, giải nén vào thư mục có dấu tiếng Việt và khoảng trắng
+      - name: Đóng gói zip, giải nén vào thư mục có dấu tiếng Việt, khoảng trắng, ngoặc và dấu &
         run: |
           python tools/build_zip.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $parent = Join-Path $env:RUNNER_TEMP 'Người dùng Việt'
+          $parent = Join-Path $env:RUNNER_TEMP 'Người dùng Việt (1) & bạn'
           New-Item -ItemType Directory -Force -Path $parent | Out-Null
           Expand-Archive -Path (Get-Item dist\DichVideoStudio-*.zip).FullName -DestinationPath $parent
           $app = Join-Path $parent 'DichVideoStudio'
@@ -110,7 +110,7 @@ jobs:
           DVS_LIVE: "1"
         run: |
           Set-Location -LiteralPath $env:APP_DIR
-          & .\.venv\Scripts\python.exe -m pytest tests\test_live.py -v -p no:cacheprovider -o log_cli=true -o log_cli_level=INFO --basetemp (Join-Path $env:RUNNER_TEMP 'tệp tạm 2')
+          & .\.venv\Scripts\python.exe -m pytest tests\test_live.py -v -p no:cacheprovider -rs -o log_cli=true -o log_cli_level=INFO --basetemp (Join-Path $env:RUNNER_TEMP 'tệp tạm 2')
           exit $LASTEXITCODE
 
       - name: Nhật ký khi có lỗi
@@ -136,10 +136,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Đóng gói zip, giải nén vào thư mục có dấu tiếng Việt và khoảng trắng
+      - name: Đóng gói zip, giải nén vào thư mục có dấu tiếng Việt, khoảng trắng, ngoặc và dấu &
         run: |
           python3 tools/build_zip.py
-          parent="$RUNNER_TEMP/Người dùng Việt"
+          parent="$RUNNER_TEMP/Người dùng Việt (1) & bạn"
           mkdir -p "$parent"
           unzip -q dist/DichVideoStudio-*.zip -d "$parent"
           echo "APP_DIR=$parent/DichVideoStudio" >> "$GITHUB_ENV"
@@ -194,7 +194,7 @@ jobs:
           DVS_LIVE: "1"
         run: |
           cd "$APP_DIR"
-          .venv/bin/python -m pytest tests/test_live.py -v -p no:cacheprovider -o log_cli=true -o log_cli_level=INFO --basetemp "$RUNNER_TEMP/tệp tạm 2"
+          .venv/bin/python -m pytest tests/test_live.py -v -p no:cacheprovider -rs -o log_cli=true -o log_cli_level=INFO --basetemp "$RUNNER_TEMP/tệp tạm 2"
 
       - name: Nhật ký khi có lỗi
         if: failure()

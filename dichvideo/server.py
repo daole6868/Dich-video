@@ -147,6 +147,12 @@ class GuardMiddleware(BaseHTTPMiddleware):
 # --------------------------------------------------------------------------
 
 @api
+async def get_ping(request: Request):
+    """Trả lời thật nhanh: tệp khởi động dùng để biết ứng dụng đã chạy sẵn hay chưa."""
+    return JSONResponse({"app": APP_NAME, "version": __version__, "data_dir": str(config.DATA_DIR)})
+
+
+@api
 async def get_system(request: Request):
     def build() -> dict:
         try:
@@ -831,6 +837,7 @@ def create_app(*, allow_lan: bool = False) -> Starlette:
         Route("/fonts/{name}", get_font),
         Route("/fonts/{scope}/{name}", get_font),
         Route("/api/system", get_system),
+        Route("/api/ping", get_ping, methods=["GET"]),
         Route("/api/settings", get_settings, methods=["GET"]),
         Route("/api/settings", put_settings, methods=["PUT"]),
         Route("/api/glossary", get_glossary, methods=["GET"]),

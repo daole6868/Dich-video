@@ -1,0 +1,203 @@
+name: Kiểm tra bản cài
+
+# Chạy bản zip trên máy ảo Windows, macOS và Linux của GitHub, theo đúng cách người dùng làm:
+# giải nén vào một thư mục có dấu tiếng Việt và khoảng trắng, chạy tệp khởi động, rồi chạy bộ test
+# và một lượt xử lý video trọn vẹn bằng các bộ máy thật (Whisper, Piper, OCR, ffmpeg).
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/kiem-tra.yml"
+      - "Chay_Windows.bat"
+      - "Chay_macOS.command"
+      - "chay_linux.sh"
+      - "run.py"
+      - "requirements*.txt"
+      - "dichvideo/**"
+      - "tests/**"
+      - "tools/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kiem-tra-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Giống máy người dùng chưa cài Python: buộc uv tải bản Python riêng, không dùng bản có sẵn của máy ảo.
+  UV_PYTHON_PREFERENCE: only-managed
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Đóng gói zip, giải nén vào thư mục có dấu tiếng Việt và khoảng trắng
+        run: |
+          python tools/build_zip.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $parent = Join-Path $env:RUNNER_TEMP 'Người dùng Việt'
+          New-Item -ItemType Directory -Force -Path $parent | Out-Null
+          Expand-Archive -Path (Get-Item dist\DichVideoStudio-*.zip).FullName -DestinationPath $parent
+          $app = Join-Path $parent 'DichVideoStudio'
+          "APP_DIR=$app" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Get-ChildItem -LiteralPath $app | Format-Table Name, Length
+
+      - name: Chay_Windows.bat --check (cài đặt lần đầu như người dùng)
+        run: |
+          # Bỏ uv có sẵn (nếu có) khỏi PATH để đi đúng nhánh tự tải uv của tệp khởi động.
+          $found = Get-Command uv -ErrorAction SilentlyContinue
+          if ($found) {
+            $dir = (Split-Path $found.Source).TrimEnd('\')
+            $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_.TrimEnd('\') -ne $dir }) -join ';'
+          }
+          Set-Location -LiteralPath $env:APP_DIR
+          cmd /d /c "Chay_Windows.bat --check < NUL"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path -LiteralPath .\runtime\uv.exe)) { throw 'Tệp khởi động đã không tự tải uv' }
+          & .\.venv\Scripts\python.exe -c "import sys; print(sys.version); print(sys.executable)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Chạy lần hai (không cài lại)
+        run: |
+          Set-Location -LiteralPath $env:APP_DIR
+          $t = Get-Date
+          cmd /d /c "Chay_Windows.bat --check < NUL"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "Lần hai mất {0:n1} giây" -f ((Get-Date) - $t).TotalSeconds
+
+      - name: Khởi động máy chủ thật rồi gọi thử
+        run: |
+          $py = Join-Path $env:APP_DIR '.venv\Scripts\python.exe'
+          $out = Join-Path $env:RUNNER_TEMP 'may-chu.out.txt'
+          $errFile = Join-Path $env:RUNNER_TEMP 'may-chu.err.txt'
+          $p = Start-Process -FilePath $py -ArgumentList 'run.py', '--no-browser', '--port', '8765' `
+            -WorkingDirectory $env:APP_DIR -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $errFile
+          $sys = $null
+          foreach ($i in 1..60) {
+            Start-Sleep -Seconds 1
+            try { $sys = Invoke-RestMethod http://127.0.0.1:8765/api/system; break } catch { }
+          }
+          Get-Content -LiteralPath $out, $errFile -Encoding utf8 -ErrorAction SilentlyContinue
+          if (-not $sys) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; throw 'Máy chủ không khởi động' }
+          $sys | ConvertTo-Json -Depth 6
+          $html = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+          if ($html.Content -notmatch 'id="app"') { throw 'Trang chủ không đúng' }
+          Invoke-RestMethod -Method Post http://127.0.0.1:8765/api/shutdown | Out-Null
+          if (-not $p.WaitForExit(20000)) { Stop-Process -Id $p.Id -Force; throw 'Máy chủ không tắt sau lệnh shutdown' }
+
+      - name: Bộ test tự động
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          Set-Location -LiteralPath $env:APP_DIR
+          & .\runtime\uv.exe pip install --python .\.venv\Scripts\python.exe pytest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\.venv\Scripts\python.exe -m pytest tests -v -p no:cacheprovider --basetemp (Join-Path $env:RUNNER_TEMP 'tệp tạm 1')
+          exit $LASTEXITCODE
+
+      - name: Test bộ máy thật (Whisper, Piper, OCR, trọn quy trình)
+        env:
+          PYTHONIOENCODING: utf-8
+          DVS_LIVE: "1"
+        run: |
+          Set-Location -LiteralPath $env:APP_DIR
+          & .\.venv\Scripts\python.exe -m pytest tests\test_live.py -v -p no:cacheprovider --basetemp (Join-Path $env:RUNNER_TEMP 'tệp tạm 2')
+          exit $LASTEXITCODE
+
+      - name: Nhật ký khi có lỗi
+        if: failure()
+        run: |
+          Get-ChildItem -LiteralPath $env:APP_DIR -Force -ErrorAction SilentlyContinue | Format-Table Name, Length
+          Get-Content -LiteralPath (Join-Path $env:APP_DIR 'data\logs\app.log') -Tail 200 -Encoding utf8 -ErrorAction SilentlyContinue
+
+  unix:
+    name: ${{ matrix.ten }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            ten: macOS
+            khoi_dong: ./Chay_macOS.command
+          - os: ubuntu-latest
+            ten: Linux
+            khoi_dong: ./chay_linux.sh
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Đóng gói zip, giải nén vào thư mục có dấu tiếng Việt và khoảng trắng
+        run: |
+          python3 tools/build_zip.py
+          parent="$RUNNER_TEMP/Người dùng Việt"
+          mkdir -p "$parent"
+          unzip -q dist/DichVideoStudio-*.zip -d "$parent"
+          echo "APP_DIR=$parent/DichVideoStudio" >> "$GITHUB_ENV"
+          ls -la "$parent/DichVideoStudio"
+          uname -a
+
+      - name: Tệp khởi động --check (cài đặt lần đầu như người dùng)
+        run: |
+          cd "$APP_DIR"
+          # Bỏ uv có sẵn (nếu có) khỏi PATH để đi đúng nhánh tự tải uv của tệp khởi động.
+          if command -v uv >/dev/null 2>&1; then
+            bad="$(dirname "$(command -v uv)")"
+            PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$bad" | paste -sd: -)"
+            export PATH
+          fi
+          test -x "${{ matrix.khoi_dong }}"
+          "${{ matrix.khoi_dong }}" --check </dev/null
+          test -x runtime/uv
+          .venv/bin/python -c "import sys; print(sys.version); print(sys.executable)"
+
+      - name: Chạy lần hai (không cài lại)
+        run: |
+          cd "$APP_DIR"
+          time "${{ matrix.khoi_dong }}" --check </dev/null
+
+      - name: Khởi động máy chủ thật rồi gọi thử
+        run: |
+          cd "$APP_DIR"
+          .venv/bin/python run.py --no-browser --port 8765 > "$RUNNER_TEMP/may-chu.log" 2>&1 &
+          pid=$!
+          ok=""
+          for i in $(seq 1 60); do
+            sleep 1
+            if curl -fsS http://127.0.0.1:8765/api/system -o "$RUNNER_TEMP/he-thong.json" 2>/dev/null; then ok=1; break; fi
+          done
+          cat "$RUNNER_TEMP/may-chu.log"
+          if [ -z "$ok" ]; then kill "$pid" 2>/dev/null; echo "Máy chủ không khởi động"; exit 1; fi
+          cat "$RUNNER_TEMP/he-thong.json"; echo
+          curl -fsS http://127.0.0.1:8765/ | grep -q 'id="app"'
+          curl -fsS -X POST http://127.0.0.1:8765/api/shutdown >/dev/null
+          for i in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+          if kill -0 "$pid" 2>/dev/null; then kill -9 "$pid"; echo "Máy chủ không tắt sau lệnh shutdown"; exit 1; fi
+
+      - name: Bộ test tự động
+        run: |
+          cd "$APP_DIR"
+          runtime/uv pip install --python .venv/bin/python pytest
+          .venv/bin/python -m pytest tests -v -p no:cacheprovider --basetemp "$RUNNER_TEMP/tệp tạm 1"
+
+      - name: Test bộ máy thật (Whisper, Piper, OCR, trọn quy trình)
+        env:
+          DVS_LIVE: "1"
+        run: |
+          cd "$APP_DIR"
+          .venv/bin/python -m pytest tests/test_live.py -v -p no:cacheprovider --basetemp "$RUNNER_TEMP/tệp tạm 2"
+
+      - name: Nhật ký khi có lỗi
+        if: failure()
+        run: |
+          ls -la "$APP_DIR" || true
+          tail -n 200 "$APP_DIR/data/logs/app.log" || true
